@@ -94,6 +94,17 @@ export async function checkCloudflare(env,expectedVersion,transport=fetch){
     get('/script-settings')]);
   return verifyReadback(settings,secrets,deployments,expectedVersion,scriptSettings);
 }
+export function parseRetiredSecretBulkVersion(log){
+  requireOk(typeof log==='string'&&
+    log.includes('Successfully deleted secret for key: MCP_ACCESS_TOKEN')&&
+    !log.includes('Successfully created secret for key:'),
+    'Single legacy secret deletion was not confirmed');
+  const ids=[...log.matchAll(/Success! Created version\s+([0-9a-f-]{36})\s+with 0 secrets created and 1 secret deleted\./gi)]
+    .map(x=>x[1]);
+  requireOk(ids.length===1&&UUID.test(ids[0]),
+    'Single retired Secret version ID not confirmed');
+  return ids[0];
+}
 export function parseVersion(log){
   const ids=[...log.matchAll(/Version ID:\s*([0-9a-f-]{36})/gi)].map(x=>x[1]);
   requireOk(ids.length===1&&UUID.test(ids[0]),'Wrangler published Version ID not confirmed');
@@ -110,9 +121,10 @@ async function main(){
       'Expected published Version ID missing');
     const version=await checkCloudflare(process.env,expected);
     console.log('Weixin deployment readback passed; active Version ID: '+version);
-  }else if(mode==='version'){
+  }else if(mode==='version'||mode==='bulk-version'){
     requireOk(!!arg,'Wrangler log not supplied');
-    console.log(parseVersion(await readFile(arg,'utf8')));
+    const log=await readFile(arg,'utf8');
+    console.log(mode==='bulk-version'?parseRetiredSecretBulkVersion(log):parseVersion(log));
   }else throw Error('Unsupported release operation');
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)

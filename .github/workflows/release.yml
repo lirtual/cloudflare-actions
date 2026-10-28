@@ -99,14 +99,16 @@ jobs:
             exit 1
           }
           log="$(mktemp)"
-          chmod 600 "$log"
-          trap 'rm -f "$log"' EXIT
+          retire="$(mktemp)"
+          chmod 600 "$log" "$retire"
+          trap 'rm -f "$log" "$retire"' EXIT
+          printf '%s\n' '{"MCP_ACCESS_TOKEN":null}' >"$retire"
           if ! (cd apps/weixin-mcp-worker &&
-              pnpm exec wrangler versions secret delete MCP_ACCESS_TOKEN --name weixin-mcp-worker) >"$log" 2>&1; then
-            echo "Secret version creation failed, no deployment requested" >&2
+              pnpm exec wrangler versions secret bulk "$retire" --name weixin-mcp-worker) >"$log" 2>&1; then
+            echo "Non-interactive secret version creation failed; no deployment requested" >&2
             exit 1
           fi
-          version="$(node scripts/release-guard.mjs version "$log")"
+          version="$(node scripts/release-guard.mjs bulk-version "$log")"
           [[ "$version" != "$current" ]]
           if ! (cd apps/weixin-mcp-worker &&
               pnpm exec wrangler versions deploy "$version@100%" --yes --name weixin-mcp-worker) >"$log" 2>&1; then
