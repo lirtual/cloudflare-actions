@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
   assertReviewedConfig,assertOldPublisherDisabled,checkSinglePublisher,
-  verifyReadback,parseVersion,checkCloudflare
+  verifyReadback,parseVersion,parseRetiredSecretBulkVersion,checkCloudflare
 } from './release-guard.mjs';
 
 const version='33333333-3333-4333-8333-333333333333';
@@ -59,6 +59,20 @@ test('production readback rejects altered D1, missing secret and wrong versions'
   assert.throws(()=>verifyReadback({...cleaned,bindings:cleaned.bindings.filter(x=>x.name!=='WEIXIN_ENCRYPTION_KEY')},secrets,deploy),/Secret/);
   assert.throws(()=>verifyReadback(settings,secrets,{deployments:[{versions:[{percentage:50,version_id:version}]}]}),/traffic/);
 });
+test('exact noninteractive bulk deletion must create one reviewed undeployed version',()=>{
+  const suffix=' with 0 secrets created and 1 secret deleted.';
+  const valid='Successfully deleted secret for key: MCP_ACCESS_TOKEN\n'+
+    'Success! Created version '+version+suffix;
+  assert.equal(parseRetiredSecretBulkVersion(valid),version);
+  assert.throws(()=>parseRetiredSecretBulkVersion('Success! Created version '+version+suffix),/deletion/);
+  assert.throws(()=>parseRetiredSecretBulkVersion(
+    'Successfully created secret for key: EXTRA\n'+valid),/deletion/);
+  assert.throws(()=>parseRetiredSecretBulkVersion(valid+'\n'+valid),/not confirmed/);
+  assert.throws(()=>parseRetiredSecretBulkVersion(
+    'Successfully deleted secret for key: MCP_ACCESS_TOKEN\nSuccess! Created version '+version+
+    ' with 1 secret created and 1 secret deleted.'),/not confirmed/);
+});
+
 test('deployment parsing never prints raw logs',()=>{
   assert.equal(parseVersion('Version ID: '+version),version);
   assert.throws(()=>parseVersion('No version'),/not confirmed/);
@@ -73,7 +87,10 @@ test('release stays manual, main-only, scoped to one Worker and outside CI',()=>
   assert.match(release,/environment: weixin-provider/);
   assert.match(release,/node scripts\/release-guard.mjs legacy/g);
   assert.match(release,/pnpm exec wrangler deploy/);
-  assert.match(release,/wrangler versions secret delete MCP_ACCESS_TOKEN/);
+  assert.match(release,/wrangler versions secret bulk "\$retire" --name weixin-mcp-worker/);
+  assert.match(release,/node scripts\/release-guard.mjs bulk-version "\$log"/);
+  assert.match(release,/\{"MCP_ACCESS_TOKEN":null\}/);
+  assert.doesNotMatch(release,/wrangler versions secret delete/);
   assert.match(release,/wrangler versions deploy "\$version@100%" --yes/);
   assert.match(release,/7ec859d0-438a-4814-807a-fa58486eaf49/);
   assert.match(release,/inputs.retire_legacy_secret/);

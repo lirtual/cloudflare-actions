@@ -14,8 +14,10 @@ public MCP domain and Portal registration have already been retired.
 - The `WEIXIN_ENCRYPTION_KEY` Cloudflare Secret and the production
   `weixin-mcp-db` binding are inherited, never reset or recreated. The old
   `MCP_ACCESS_TOKEN` is no longer needed by this source. Remove the stored
-  legacy Secret using the one-time versioned operation inside the existing
-  manual Provider release, then confirm its absence and unchanged encryption Secret.
+  legacy Secret using the one-time non-interactive `wrangler versions secret bulk`
+  JSON null operation in the existing manual Provider release, then confirm
+  its absence and the unchanged encryption Secret. Never retry a partially
+  completed version creation without first inspecting the Cloudflare version list.
 
 ## Safety and evidence
 
