@@ -68,6 +68,10 @@ export async function sendOnce(env:Env,text:string,requestId:string,dispatch:Dis
   if(beforeNewSend){
     await beforeNewSend();
     binding=await env.DB.prepare('SELECT * FROM weixin_binding WHERE id=1').first<Binding>();
+    // The verified owner can rebind while context refresh is in flight.
+    // Never redirect a frozen invocation to the new generation.
+    if(expectedGeneration!==undefined&&binding?.generation!==expectedGeneration)
+      fail('binding_generation_changed');
     if(!binding||binding.state!=='ready'||!binding.session_ciphertext||!binding.session_key_id)
       fail('binding_not_ready');
   }
