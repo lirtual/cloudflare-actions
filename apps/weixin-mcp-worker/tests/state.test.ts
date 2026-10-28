@@ -22,7 +22,7 @@ class FakeD1 {
 }
 function fixture(){
   const db=new FakeD1();
-  const env={DB:db as unknown as D1Database,MCP_ACCESS_TOKEN:'test',MCP_HOST:'test.example',
+  const env={DB:db as unknown as D1Database,
     WEIXIN_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')} as Env;
   const session:IlinkSession={botToken:'sensitive-bot-token',ownerId:'owner-id',
     botId:'bot-id',contextToken:'sensitive-context',cursor:'secret-cursor'};

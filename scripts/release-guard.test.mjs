@@ -32,23 +32,28 @@ test('old publisher must be disabled and all old queued/retryable releases drain
   await assert.rejects(()=>checkSinglePublisher(async()=>({ok:false,status:403})),/could not be checked/);
   await checkSinglePublisher(mock());
 });
-test('Weixin source only publishes owner management domain, D1 and Secrets stay fixed',()=>{
+test('Provider config never restores public MCP domain or bearer ingress',()=>{
   const conf=JSON.parse(readFileSync(new URL('../apps/weixin-mcp-worker/wrangler.jsonc',import.meta.url)));
   assert.doesNotThrow(()=>assertReviewedConfig(conf));
   assert.throws(()=>assertReviewedConfig({...conf,d1_databases:[{...conf.d1_databases[0],database_id:version}]}),/D1/);
   assert.throws(()=>assertReviewedConfig({...conf,routes:[]}),/domain/);
   assert.throws(()=>assertReviewedConfig({...conf,routes:[...conf.routes,{pattern:'weixin-mcp.lirtual.dpdns.org',custom_domain:true}]}),/domain/);
   assert.throws(()=>assertReviewedConfig({...conf,version_metadata:undefined}),/Metadata/);
+  assert.throws(()=>assertReviewedConfig({...conf,vars:{...conf.vars,MCP_HOST:'retired.example.org'}}),/Retired/);
+  assert.throws(()=>assertReviewedConfig({...conf,secrets:{required:['MCP_ACCESS_TOKEN','WEIXIN_ENCRYPTION_KEY']}}),/Secret/);
 });
 test('production readback rejects altered D1, missing secret and wrong versions',()=>{
   const {settings,secrets,deploy}=existing;
-  assert.equal(verifyReadback(settings,secrets,deploy,version),version);
-  assert.throws(()=>verifyReadback(settings,secrets,deploy,'44444444-4444-4444-8444-444444444444'),/Version ID differs/);
-  assert.throws(()=>verifyReadback(settings,secrets,deploy,version,
+  assert.equal(verifyReadback(settings,secrets,deploy),version);
+  const cleaned={...settings,bindings:settings.bindings.filter(x=>!['MCP_HOST','MCP_ACCESS_TOKEN'].includes(x.name))};
+  assert.throws(()=>verifyReadback(cleaned,[{name:'WEIXIN_ENCRYPTION_KEY'}],deploy,'44444444-4444-4444-8444-444444444444'),/Version ID differs/);
+  assert.throws(()=>verifyReadback(cleaned,[{name:'WEIXIN_ENCRYPTION_KEY'}],deploy,version,
     {observability:{logs:{invocation_logs:true}}}),/logging must remain disabled/);
   assert.throws(()=>verifyReadback({...settings,bindings:[{name:'DB',type:'d1',id:version}]},secrets,deploy),/D1/);
   assert.throws(()=>verifyReadback(settings,[],deploy),/Secret/);
-  assert.throws(()=>verifyReadback({...settings,bindings:settings.bindings.filter(x=>x.name!=='WEIXIN_ENCRYPTION_KEY')},secrets,deploy),/Secret/);
+  assert.equal(verifyReadback(cleaned,[{name:'WEIXIN_ENCRYPTION_KEY'}],deploy,version),version);
+  assert.throws(()=>verifyReadback(settings,secrets,deploy,version),/Legacy MCP host/);
+  assert.throws(()=>verifyReadback({...cleaned,bindings:cleaned.bindings.filter(x=>x.name!=='WEIXIN_ENCRYPTION_KEY')},secrets,deploy),/Secret/);
   assert.throws(()=>verifyReadback(settings,secrets,{deployments:[{versions:[{percentage:50,version_id:version}]}]}),/traffic/);
 });
 test('deployment parsing never prints raw logs',()=>{
@@ -81,8 +86,16 @@ test('Cloudflare account is a 32-character account ID; readback is read-only',as
     return {ok:true,json:async()=>({success:true,result})};
   };
   assert.equal(await checkCloudflare({CLOUDFLARE_ACCOUNT_ID:account,
-    CLOUDFLARE_API_TOKEN:'abcdefghijklmnopqrst'},version,fake),version);
-  assert.equal(seen.length,4);
+    CLOUDFLARE_API_TOKEN:'abcdefghijklmnopqrst'},undefined,fake),version);
+  const retiredMock=async(url,opts)=>fake(url,opts).then(x=>({
+    ...x,json:async()=>({success:true,result:url.endsWith('/settings')?
+      {...existing.settings,bindings:existing.settings.bindings.filter(y=>y.name!=='MCP_HOST')}:
+      url.endsWith('/secrets')?[{name:'WEIXIN_ENCRYPTION_KEY'}]:
+      await x.json().then(v=>v.result)})
+  }));
+  assert.equal(await checkCloudflare({CLOUDFLARE_ACCOUNT_ID:account,
+    CLOUDFLARE_API_TOKEN:'abcdefghijklmnopqrst'},version,retiredMock),version);
+  assert.equal(seen.length,8);
   assert.ok(seen.every(([url])=>url.includes('/accounts/'+account+'/workers/scripts/weixin-mcp-worker/')));
   await assert.rejects(()=>checkCloudflare({CLOUDFLARE_ACCOUNT_ID:version,
     CLOUDFLARE_API_TOKEN:'abcdefghijklmnopqrst'},undefined,fake),/access unavailable/);

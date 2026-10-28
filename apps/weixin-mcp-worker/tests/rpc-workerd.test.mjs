@@ -11,8 +11,10 @@ const reviewedDigest="b378720974a0b76343359f621ac5da269099725ce6babd471ca33a4eb7
 test("real Service Binding RPC is independent of public MCP and queries historical receipts read-only",async()=>{
  const mf=new Miniflare(convertV4MiniflareOptions({port:0,workers:[
   {name:"weixin-provider",modules:true,script,compatibilityDate:"2026-09-15",d1Databases:{DB:"provider-test"},bindings:{
-    MCP_HOST:"weixin-mcp.example.org",ADMIN_HOST:"weixin-owner.example.org",
-    MCP_ACCESS_TOKEN:"test",WEIXIN_ENCRYPTION_KEY:Buffer.alloc(32,17).toString("base64"),CF_VERSION_METADATA:{id:version}}},
+    ADMIN_HOST:"weixin-owner.example.org",
+    WEIXIN_ENCRYPTION_KEY:Buffer.alloc(32,17).toString("base64"),CF_VERSION_METADATA:{id:version},
+    ACCESS_TEAM_DOMAIN:"owner.cloudflareaccess.com",ACCESS_AUD:"owner-aud",
+    OWNER_EMAIL:"owner@example.org"}},
   {name:"caller",modules:true,script:`export default {async fetch(request,env){const mode=new URL(request.url).searchParams.get("mode");if(mode==="get")return Response.json(await env.WEIXIN.getBinding());if(mode==="contract")return Response.json(await env.WEIXIN.getContract());return Response.json(await env.WEIXIN.getReceipt({invocation_id:"${id}",binding_generation:1,input_digest:"${"f".repeat(64)}"}));}};`,compatibilityDate:"2026-09-15",serviceBindings:{WEIXIN:"weixin-provider"}},
  ]}));
  try{
@@ -23,6 +25,9 @@ test("real Service Binding RPC is independent of public MCP and queries historic
   assert.deepEqual(contract,{deployment_id:version,contract_digest:reviewedDigest});
   await db.prepare("INSERT INTO weixin_send_receipts(generation,request_id,text_digest,status,created_at,updated_at) VALUES(1,?,? ,\u0027unknown\u0027,1,1)").bind(id,"f".repeat(64)).run();
   assert.equal((await (await mf.getWorker("caller")).fetch("https://caller.invalid/").then(x=>x.json())).status,"unknown");
-  const publicDenied=await mf.dispatchFetch("https://weixin-mcp.example.org/mcp");assert.equal(publicDenied.status,401);
+  const publicDenied=await mf.dispatchFetch("https://weixin-mcp.example.org/mcp");
+  assert.equal(publicDenied.status,404);
+  const adminDenied=await mf.dispatchFetch("https://weixin-owner.example.org/setup");
+  assert.equal(adminDenied.status,403);
  }finally{await mf.dispose();}
 });

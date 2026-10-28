@@ -50,9 +50,8 @@ function database(){
 }
 function setup(){
   const db=database();
-  const env={DB:db as unknown as D1Database,MCP_HOST:'weixin-mcp.example.org',
-    ADMIN_HOST:HOST,ACCESS_TEAM_DOMAIN:TEAM,ACCESS_AUD:AUD,OWNER_EMAIL:OWNER,
-    MCP_ACCESS_TOKEN:'portal-secret',WEIXIN_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')} as Env;
+  const env={DB:db as unknown as D1Database,ADMIN_HOST:HOST,ACCESS_TEAM_DOMAIN:TEAM,ACCESS_AUD:AUD,OWNER_EMAIL:OWNER,
+    WEIXIN_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')} as Env;
   return {env,db};
 }
 const ownerUrl='https://'+HOST+'/setup';
@@ -74,7 +73,9 @@ test('Access owner management rejects unsigned, wrong-audience, wrong-email and 
   assert.equal((await handleAdmin(request(ownerUrl,await jwt()),{...env,OWNER_EMAIL:''},certs)).status,503);
   const noJwt=await worker.fetch(new Request(ownerUrl),env);
   assert.equal(noJwt.status,403);
-  assert.equal((await worker.fetch(new Request(ownerUrl),{...env,ADMIN_HOST:env.MCP_HOST})).status,503);
+  assert.equal((await worker.fetch(new Request('https://weixin-mcp.example.org/mcp'),env)).status,404);
+  assert.equal((await worker.fetch(new Request('https://weixin-mcp.example.org/setup'),env)).status,404);
+  assert.equal((await worker.fetch(new Request('http://'+HOST+'/setup'),env)).status,404);
 });
 test('valid signed Access identity sees sanitized state; CSRF and explicit confirmation gate local unbind',async()=>{
   const {env,db}=setup();
