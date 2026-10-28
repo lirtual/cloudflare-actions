@@ -5,11 +5,36 @@ import {syncCursorOnce} from "./lease.ts";
 // @ts-ignore local JS protocol is exercised by existing compatibility tests.
 import {createIlinkClient} from "../poc/protocol.mjs";
 
-export const WEIXIN_ACTION_CONTRACT = Object.freeze({
- provider:"weixin",executor:"cloudflare",id:"weixin.send_text",version:1,
- side_effect:"send_to_verified_owner_only",max_text_bytes:4096,
+// Must match the reviewed Workflow catalog exactly; no dynamic registry or arbitrary target.
+export const ACTION_MANIFEST = Object.freeze({
+ executor:'cloudflare',provider:'weixin',action:'weixin.send_text',version:1,
+ source_repository:'lirtual/cloudflare-actions',service:'weixin-mcp-worker',
+ entrypoint:'WeixinActionProvider',
+ side_effect:'send_to_verified_owner_only',
+ input_schema:{type:'object',additionalProperties:false,
+  required:['session_step_id'],properties:{session_step_id:{type:'string',
+   description:'A dependency on a signed, physically verified OpenList Session in this Run'}}},
+ output_schema:{type:'object',additionalProperties:false,
+  required:['status'],properties:{status:{enum:['accepted','rejected','unknown']}}},
 });
-export type TextInvocation = {invocation_id:string;binding_generation:number;session_url:string};
+function canonical(value:unknown):unknown{
+ if(Array.isArray(value))return value.map(canonical);
+ if(value&&typeof value==='object')return Object.fromEntries(
+  Object.entries(value).sort(([a],[b])=>a.localeCompare(b,'en')).map(([k,v])=>[k,canonical(v)]));
+ return value;
+}
+export async function providerIdentity(env:Env){
+ const deployment_id=env.CF_VERSION_METADATA?.id;
+ if(typeof deployment_id!=='string'||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deployment_id))
+  invalid('provider_deployment_unavailable');
+ const bytes=new TextEncoder().encode(JSON.stringify(canonical(ACTION_MANIFEST)));
+ const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
+ const contract_digest=Array.from(hash,b=>b.toString(16).padStart(2,'0')).join('');
+ return {deployment_id,contract_digest};
+}
+export type TextInvocation = {invocation_id:string;binding_generation:number;session_url:string;
+ deployment_id:string;contract_digest:string};
 export type ReceiptQuery = {invocation_id:string;binding_generation:number;input_digest:string};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const digestRe=/^[a-f0-9]{64}$/;
@@ -56,6 +81,9 @@ export async function sendTextAction(env:Env,input:TextInvocation,dispatch:Dispa
   synchronize:()=>Promise<void>=()=>syncCursorOnce(env,session=>
     createIlinkClient().getUpdates(session.botToken,session.cursor)).then(()=>{})){
  validateIdentity(input?.invocation_id,input?.binding_generation);
+ const identity=await providerIdentity(env);
+ if(input.deployment_id!==identity.deployment_id)invalid('deployment_identity_mismatch');
+ if(input.contract_digest!==identity.contract_digest)invalid('contract_identity_mismatch');
  const body=readyMessage(input.session_url),input_digest=await sha256(body);
  const prior=await readStoredReceipt(env,input.invocation_id);
  if(prior){

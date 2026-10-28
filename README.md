@@ -8,6 +8,10 @@ This repository is **not** the production publisher yet. Do not deploy until the
 
 - Original reviewed source: `lirtual/mcp-workers` commit `55ef67aabaf44f68eebf1f2975d2f7fb75edb96d`, `apps/weixin-mcp-worker`; copied source includes the legacy owner Access page, MCP ingress, D1 migration and durable receipt fence.
 - This branch adds `WeixinActionProvider` WorkerEntrypoint RPC (`sendText`, `getReceipt`, `getBinding`), which binds the fixed `weixin.send_text` template to the current Owner generation. No arbitrary recipient, generic message template, or public RPC HTTP endpoint is provided.
+- The private `getContract` RPC reports the live `CF_VERSION_METADATA.id` and
+  the exact reviewed action-contract digest. Every `sendText` RPC must carry
+  both pins and fails before a receipt reservation when either differs.
+  Workflow independently checks the same identity at Publish and first dispatch.
 - `getReceipt` reads by invocation ID, digest and historic generation even after rebind; no upstream operation occurs. Missing receipt means **indeterminate**, not definitely unsent. A send can return `accepted`, `rejected` or `unknown`; handset delivery is separate evidence.
 - The Provider enforces the stable UUID, generation, canonical HTTPS Quick Tunnel URL and 4 KiB bound; the caller must independently authorize the Published Plan and verify signed OpenList Session Ready state *before* issuing this RPC. Provider-only validation does not establish provenance.
 - The first RPC operation does not retry an ambiguous external result. Existing D1, encryption keys and URL host bindings are unchanged and **must not be recreated** during migration.
