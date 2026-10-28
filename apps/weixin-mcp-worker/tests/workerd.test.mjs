@@ -62,6 +62,35 @@ test('real workerd D1, retired public ingress, CAS lease and historical receipt 
     const wrongAdmin=await mf.dispatchFetch('https://untrusted.example.org/setup');
     assert.equal(wrongAdmin.status,404);
 
+    // ChatGPT link tracking must not lock the owner out after Access OTP.
+    // Canonicalization must not bypass Access or widen the management surface.
+    const tracked=await mf.dispatchFetch(
+      'https://'+adminHost+'/setup?utm_source=chatgpt.com',{redirect:'manual'});
+    assert.equal(tracked.status,303);
+    assert.equal(tracked.headers.get('location'),'https://'+adminHost+'/setup');
+    assert.equal(tracked.headers.get('cache-control'),'no-store');
+    const clean=await mf.dispatchFetch(tracked.headers.get('location'));
+    assert.equal(clean.status,403); // Owner JWT is still mandatory.
+    for(const suffix of [
+      '/setup?utm_source=someone-else',
+      '/setup?utm_source=chatgpt.com&next=https://evil.example',
+      '/setup?utm_source=chatgpt.com&utm_source=chatgpt.com',
+      '/setup/start?utm_source=chatgpt.com',
+      '/?utm_source=chatgpt.com',
+    ]){
+      const deniedQuery=await mf.dispatchFetch('https://'+adminHost+suffix,
+        {redirect:'manual'});
+      assert.equal(deniedQuery.status,404,suffix);
+    }
+    const deniedPost=await mf.dispatchFetch(
+      'https://'+adminHost+'/setup?utm_source=chatgpt.com',
+      {method:'POST',redirect:'manual'});
+    assert.equal(deniedPost.status,404);
+    const deniedHost=await mf.dispatchFetch(
+      'https://untrusted.example.org/setup?utm_source=chatgpt.com',
+      {redirect:'manual'});
+    assert.equal(deniedHost.status,404);
+
     // Workerd-backed SQL lease: two simultaneous contenders cannot both win.
     const t=Math.floor(Date.now()/1000);
     const admit=(holder)=>db.prepare(
