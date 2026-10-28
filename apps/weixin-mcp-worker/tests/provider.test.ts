@@ -22,6 +22,15 @@ test("one reviewed action invocation is sent at most once; receipt stays queryab
  x.sql.prepare("UPDATE weixin_binding SET generation=2,state=\u0027unbound\u0027,session_ciphertext=NULL,session_key_id=NULL WHERE id=1").run();
  assert.deepEqual((await readActionReceipt(x.env,{invocation_id:invocation,binding_generation:1,input_digest:first.input_digest})).status,"accepted");
 });
+test("read-only Action RPC rejects missing or wrong inherited Owner key before dispatch",async()=>{
+ const x=fixture();await x.ready();
+ assert.deepEqual(await bindingIdentity(x.env),{generation:1,ready:true});
+ const wrong={...x.env,WEIXIN_ENCRYPTION_KEY:Buffer.alloc(32,20).toString("base64")};
+ await assert.rejects(()=>bindingIdentity(wrong),/weixin_binding_unreadable/);
+ const lost={...x.env,WEIXIN_ENCRYPTION_KEY:undefined};
+ await assert.rejects(()=>bindingIdentity(lost as unknown as Env),/weixin_binding_unreadable/);
+ assert.equal(x.sql.prepare("SELECT count(*) AS n FROM weixin_send_receipts").get()!.n,0);
+});
 test("wrong binding, URL or input identity cannot dispatch",async()=>{
  const x=fixture();await x.ready();let sends=0;const d=async()=>{sends++;return "accepted" as const;};
  const pin=await providerIdentity(x.env);

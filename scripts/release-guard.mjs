@@ -1,5 +1,5 @@
-import {readFile,writeFile} from 'node:fs/promises';
-import {resolve,sep} from 'node:path';
+import {readFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
 const WORKER='weixin-mcp-worker';
@@ -45,15 +45,6 @@ export function assertReviewedConfig(conf){
   requireOk(JSON.stringify(conf.secrets?.required)===
     JSON.stringify(['MCP_ACCESS_TOKEN','WEIXIN_ENCRYPTION_KEY']),'Weixin Secret inventory drift');
 }
-export function stageSecrets(env){
-  const key=env.WEIXIN_ENCRYPTION_KEY;
-  requireOk(typeof env.MCP_ACCESS_TOKEN==='string'&&env.MCP_ACCESS_TOKEN.trim().length>0,
-    'Missing MCP_ACCESS_TOKEN');
-  requireOk(typeof key==='string'&&/^[A-Za-z0-9+/]{43}=$/.test(key)&&
-    Buffer.from(key,'base64').length===32&&
-    Buffer.from(key,'base64').toString('base64')===key,'WEIXIN_ENCRYPTION_KEY not canonical 32-byte Base64');
-  return {MCP_ACCESS_TOKEN:env.MCP_ACCESS_TOKEN,WEIXIN_ENCRYPTION_KEY:key};
-}
 export function verifyReadback(settings,secrets,deployments,expectedVersion,scriptSettings){
   requireOk(Array.isArray(settings?.bindings),'Worker bindings unreadable');
   const find=(name,type)=>settings.bindings.filter(x=>x.name===name&&x.type===type);
@@ -64,7 +55,8 @@ export function verifyReadback(settings,secrets,deployments,expectedVersion,scri
   }))requireOk(find(name,'plain_text').length===1&&find(name,'plain_text')[0].text===host,
     'Production host variable drift: '+name);
   requireOk(Array.isArray(secrets)&&['MCP_ACCESS_TOKEN','WEIXIN_ENCRYPTION_KEY'].every(
-    x=>secrets.filter(y=>y.name===x).length===1),'Production secrets inventory incomplete');
+    x=>secrets.filter(y=>y.name===x).length===1&&
+      find(x,'secret_text').length===1),'Production inherited Secret bindings missing');
   if(scriptSettings!==undefined)requireOk(
     scriptSettings?.observability?.logs?.invocation_logs===false,
     'Production Worker invocation logging must remain disabled');
@@ -93,25 +85,6 @@ export async function checkCloudflare(env,expectedVersion,transport=fetch){
     get('/script-settings')]);
   return verifyReadback(settings,secrets,deployments,expectedVersion,scriptSettings);
 }
-export async function verifyExistingOwnerKeyProof(receipt,stagedSecrets){
-  const rows=receipt?.[0]?.results;
-  requireOk(Array.isArray(rows)&&rows.length===1,'Owner ciphertext readback unavailable');
-  const row=rows[0];
-  requireOk(Number.isSafeInteger(row?.generation)&&row.generation>=1&&
-    typeof row.session_ciphertext==='string'&&row.session_ciphertext.length>30&&
-    typeof row.session_key_id==='string'&&row.session_key_id.length>0,
-    'Existing Owner ciphertext proof unavailable');
-  const {decrypt}=await import('../apps/weixin-mcp-worker/src/crypto.ts');
-  let credentials;
-  try{
-    credentials=await decrypt({WEIXIN_ENCRYPTION_KEY:stagedSecrets.WEIXIN_ENCRYPTION_KEY},
-      'weixin:owner:binding:'+row.generation,row.session_ciphertext,row.session_key_id);
-  }catch{throw Error('Staged key cannot decrypt existing Owner binding');}
-  requireOk(credentials&&typeof credentials.botToken==='string'&&
-    typeof credentials.ownerId==='string'&&typeof credentials.contextToken==='string',
-    'Existing binding decrypted with invalid shape');
-}
-
 export function parseVersion(log){
   const ids=[...log.matchAll(/Version ID:\s*([0-9a-f-]{36})/gi)].map(x=>x[1]);
   requireOk(ids.length===1&&UUID.test(ids[0]),'Wrangler published Version ID not confirmed');
@@ -128,22 +101,6 @@ async function main(){
       'Expected published Version ID missing');
     const version=await checkCloudflare(process.env,expected);
     console.log('Weixin deployment readback passed; active Version ID: '+version);
-  }else if(mode==='keyproof'){
-    const [ciphertextFile,secretFile]=[arg,process.argv[4]];
-    requireOk(!!ciphertextFile&&!!secretFile&&!!process.env.RUNNER_TEMP&&
-      [ciphertextFile,secretFile].every(path=>resolve(path).startsWith(
-        resolve(process.env.RUNNER_TEMP)+sep)),
-      'Key proof files must stay in runner temporary directory');
-    const [receipt,values]=await Promise.all([readFile(ciphertextFile,'utf8'),
-      readFile(secretFile,'utf8')]);
-    await verifyExistingOwnerKeyProof(JSON.parse(receipt),JSON.parse(values));
-    console.log('Existing encrypted Owner binding verified using staged key (contents withheld)');
-  }else if(mode==='secrets'){
-    requireOk(!!arg&&!!process.env.RUNNER_TEMP&&
-      resolve(arg).startsWith(resolve(process.env.RUNNER_TEMP)+sep),
-      'Secret file must be stored in runner temporary directory');
-    await writeFile(arg,JSON.stringify(stageSecrets(process.env)),{mode:0o600,flag:'wx'});
-    console.log('Secrets staged without exposing values');
   }else if(mode==='version'){
     requireOk(!!arg,'Wrangler log not supplied');
     console.log(parseVersion(await readFile(arg,'utf8')));

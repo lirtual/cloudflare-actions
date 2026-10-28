@@ -1,4 +1,4 @@
-import {sha256} from "./crypto.ts";
+import {sha256,decrypt} from "./crypto.ts";
 import {readStoredReceipt,sendOnce,type Dispatcher,type SendStatus} from "./state.ts";
 import {WeixinError,type Env,type IlinkSession} from "./types.ts";
 import {syncCursorOnce} from "./lease.ts";
@@ -54,11 +54,25 @@ export function readyMessage(urlString:string):string{
  if(new TextEncoder().encode(body).byteLength>4096)invalid("invalid_text");
  return body;
 }
+/** Pure read-only readiness proof; verifies the inherited production Secret
+ * decrypts the existing owner session without exposing any credential. */
 export async function bindingIdentity(env:Env):Promise<{generation:number;ready:boolean}>{
  const binding=await env.DB.prepare(
-  "SELECT generation,state FROM weixin_binding WHERE id=1"
- ).first<{generation:number;state:string}>();
- return {generation:binding?.generation??0,ready:binding?.state==="ready"};
+  "SELECT generation,state,session_ciphertext,session_key_id FROM weixin_binding WHERE id=1"
+ ).first<{generation:number;state:string;session_ciphertext:string|null;session_key_id:string|null}>();
+ if(binding?.state!=="ready")return {generation:binding?.generation??0,ready:false};
+ if(!Number.isSafeInteger(binding.generation)||binding.generation<1||
+    !binding.session_ciphertext||!binding.session_key_id)
+  invalid("weixin_binding_unreadable");
+ try{
+  const session=await decrypt<IlinkSession>(env,"weixin:owner:binding:"+binding.generation,
+    binding.session_ciphertext!,binding.session_key_id!);
+  if(typeof session.botToken!=="string"||!session.botToken||
+     typeof session.ownerId!=="string"||!session.ownerId||
+     typeof session.contextToken!=="string"||!session.contextToken)
+    invalid("weixin_binding_unreadable");
+ }catch{invalid("weixin_binding_unreadable");}
+ return {generation:binding.generation,ready:true};
 }
 /** Pure read of historical receipt even after unbind/rebind. Missing != not sent. */
 export async function readActionReceipt(env:Env,query:ReceiptQuery){

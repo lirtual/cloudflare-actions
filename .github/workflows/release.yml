@@ -15,7 +15,7 @@ jobs:
   release:
     if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deploy_to_production == true }}
     runs-on: ubuntu-latest
-    environment: weixin-mcp-worker
+    environment: weixin-provider
     concurrency:
       group: weixin-provider-production
       cancel-in-progress: false
@@ -53,27 +53,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: node scripts/release-guard.mjs preflight
 
-      - name: Stage exact existing Weixin Secrets for atomic deploy
-        env:
-          MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
-          WEIXIN_ENCRYPTION_KEY: ${{ secrets.WEIXIN_ENCRYPTION_KEY }}
-        run: |
-          set -euo pipefail
-          umask 077
-          node scripts/release-guard.mjs secrets "$RUNNER_TEMP/weixin-provider-secrets.json"
-
-      - name: Prove staged key decrypts existing production Owner ciphertext (read-only)
-        shell: bash
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          umask 077
-          proof="$RUNNER_TEMP/weixin-owner-keyproof.json"
-          trap 'rm -f "$proof"' EXIT
-          (cd apps/weixin-mcp-worker && pnpm exec wrangler d1 execute weixin-mcp-db --remote --json --command "SELECT generation,session_ciphertext,session_key_id FROM weixin_binding WHERE id=1") >"$proof"
-          node --experimental-strip-types scripts/release-guard.mjs keyproof "$proof" "$RUNNER_TEMP/weixin-provider-secrets.json"
+      # Existing production Worker Secrets are inherited from Cloudflare.
+      # Never stage replacement keys: their original values are unavailable.
 
       - name: Publish reviewed Provider only after rechecking old and new main
         id: publish
@@ -88,16 +69,12 @@ jobs:
           log="$(mktemp)"
           chmod 600 "$log"
           trap 'rm -f "$log"' EXIT
-          if ! (cd apps/weixin-mcp-worker && pnpm exec wrangler deploy --secrets-file "$RUNNER_TEMP/weixin-provider-secrets.json") >"$log" 2>&1; then
+          if ! (cd apps/weixin-mcp-worker && pnpm exec wrangler deploy) >"$log" 2>&1; then
             echo "Provider deploy failed; no automatic rollback or resend performed" >&2
             exit 1
           fi
           version="$(node scripts/release-guard.mjs version "$log")"
           echo "version_id=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Remove temporary Secret file
-        if: always()
-        run: rm -f "$RUNNER_TEMP/weixin-provider-secrets.json"
 
       - name: Verify exact active Cloudflare Worker Version ID and bindings
         env:

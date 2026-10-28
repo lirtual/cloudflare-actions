@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
   assertReviewedConfig,assertOldPublisherDisabled,checkSinglePublisher,
-  stageSecrets,verifyReadback,parseVersion,verifyExistingOwnerKeyProof,checkCloudflare
+  verifyReadback,parseVersion,checkCloudflare
 } from './release-guard.mjs';
 
 const version='33333333-3333-4333-8333-333333333333';
@@ -11,7 +11,9 @@ const d1='051c3b6d-e3bc-4d69-907f-37e8ab00618f';
 const existing={
   settings:{bindings:[{name:'DB',type:'d1',id:d1},
     {name:'MCP_HOST',type:'plain_text',text:'weixin-mcp.lirtual.dpdns.org'},
-    {name:'ADMIN_HOST',type:'plain_text',text:'weixin.lirtual.dpdns.org'}]},
+    {name:'ADMIN_HOST',type:'plain_text',text:'weixin.lirtual.dpdns.org'},
+    {name:'MCP_ACCESS_TOKEN',type:'secret_text'},
+    {name:'WEIXIN_ENCRYPTION_KEY',type:'secret_text'}]},
   secrets:[{name:'MCP_ACCESS_TOKEN'},{name:'WEIXIN_ENCRYPTION_KEY'}],
   deploy:{deployments:[{versions:[{percentage:100,version_id:version}]}]},
 };
@@ -44,15 +46,11 @@ test('production readback rejects altered D1, missing secret and wrong versions'
   assert.throws(()=>verifyReadback(settings,secrets,deploy,version,
     {observability:{logs:{invocation_logs:true}}}),/logging must remain disabled/);
   assert.throws(()=>verifyReadback({...settings,bindings:[{name:'DB',type:'d1',id:version}]},secrets,deploy),/D1/);
-  assert.throws(()=>verifyReadback(settings,[],deploy),/secrets/);
+  assert.throws(()=>verifyReadback(settings,[],deploy),/Secret/);
+  assert.throws(()=>verifyReadback({...settings,bindings:settings.bindings.filter(x=>x.name!=='WEIXIN_ENCRYPTION_KEY')},secrets,deploy),/Secret/);
   assert.throws(()=>verifyReadback(settings,secrets,{deployments:[{versions:[{percentage:50,version_id:version}]}]}),/traffic/);
 });
-test('Secrets validation is canonical, deployment parsing never prints raw logs',()=>{
-  const env={MCP_ACCESS_TOKEN:'valid-token',
-    WEIXIN_ENCRYPTION_KEY:Buffer.alloc(32,17).toString('base64')};
-  assert.equal(stageSecrets(env).WEIXIN_ENCRYPTION_KEY,env.WEIXIN_ENCRYPTION_KEY);
-  assert.throws(()=>stageSecrets({...env,WEIXIN_ENCRYPTION_KEY:'broken'}),/Base64/);
-  assert.throws(()=>stageSecrets({...env,MCP_ACCESS_TOKEN:''}),/MCP_ACCESS_TOKEN/);
+test('deployment parsing never prints raw logs',()=>{
   assert.equal(parseVersion('Version ID: '+version),version);
   assert.throws(()=>parseVersion('No version'),/not confirmed/);
   assert.throws(()=>parseVersion('Version ID: '+version+'\nVersion ID: '+version),/not confirmed/);
@@ -63,26 +61,12 @@ test('release stays manual, main-only, scoped to one Worker and outside CI',()=>
   assert.match(release,/workflow_dispatch:/);
   assert.match(release,/github.ref == 'refs\/heads\/main'/);
   assert.match(release,/deploy_to_production == true/);
-  assert.match(release,/environment: weixin-mcp-worker/);
+  assert.match(release,/environment: weixin-provider/);
   assert.match(release,/node scripts\/release-guard.mjs legacy/g);
-  assert.match(release,/--secrets-file/);
-  assert.match(release,/release-guard.mjs keyproof/);
-  assert.match(release,/--remote --json --command/);
+  assert.match(release,/pnpm exec wrangler deploy/);
+  assert.doesNotMatch(release,/--secrets-file|secrets\.WEIXIN_ENCRYPTION_KEY|secrets\.MCP_ACCESS_TOKEN/);
+  assert.doesNotMatch(release,/release-guard.mjs keyproof|wrangler d1 execute/);
   assert.doesNotMatch(ci,/wrangler deploy --secrets-file/);
-});
-
-test('ciphertext proof validates existing Owner key without exposing its plaintext',async()=>{
-  const {encrypt}=await import('../apps/weixin-mcp-worker/src/crypto.ts');
-  const correct=Buffer.alloc(32,19).toString('base64');
-  const wrong=Buffer.alloc(32,20).toString('base64');
-  const message={botToken:'sensitive-secret',ownerId:'private-owner',contextToken:'private-context'};
-  const {ciphertext,keyId}=await encrypt({WEIXIN_ENCRYPTION_KEY:correct},
-    'weixin:owner:binding:3',message);
-  const rows=[{results:[{generation:3,session_ciphertext:ciphertext,session_key_id:keyId}]}];
-  await verifyExistingOwnerKeyProof(rows,{WEIXIN_ENCRYPTION_KEY:correct});
-  await assert.rejects(()=>verifyExistingOwnerKeyProof(rows,{WEIXIN_ENCRYPTION_KEY:wrong}),/cannot decrypt/);
-  await assert.rejects(()=>verifyExistingOwnerKeyProof([{results:[]}],{WEIXIN_ENCRYPTION_KEY:correct}),
-    /ciphertext readback unavailable/);
 });
 
 test('Cloudflare account is a 32-character account ID; readback is read-only',async()=>{
