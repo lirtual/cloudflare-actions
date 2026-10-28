@@ -12,6 +12,11 @@ on:
         type: boolean
         required: true
         default: false
+      restore_reviewed_version:
+        description: Explicitly restore the reviewed compatible secret-free Provider Version (no D1 rollback)
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -36,6 +41,18 @@ jobs:
           [[ "$GITHUB_REF" == "refs/heads/main" && "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]
           [[ "$GITHUB_SHA" == "$(git rev-parse HEAD)" ]]
           [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
+
+      - name: Reject conflicting one-time retirement and recovery requests
+        shell: bash
+        env:
+          RETIRE: ${{ inputs.retire_legacy_secret }}
+          RESTORE: ${{ inputs.restore_reviewed_version }}
+        run: |
+          set -euo pipefail
+          [[ "$RETIRE" != "true" || "$RESTORE" != "true" ]] || {
+            echo "Cannot request secret retirement and compatible recovery together" >&2
+            exit 1
+          }
 
       - uses: pnpm/action-setup@v4
         with:
@@ -62,7 +79,7 @@ jobs:
       # One-time legacy token cleanup uses a versioned operation in this same
       # manual GitHub Actions publisher, never a direct alternative deployment.
       - name: Publish reviewed Provider only after rechecking old and new main
-        if: ${{ !inputs.retire_legacy_secret }}
+        if: ${{ !inputs.retire_legacy_secret && !inputs.restore_reviewed_version }}
         id: publish
         shell: bash
         env:
@@ -117,9 +134,39 @@ jobs:
           fi
           echo "version_id=$version" >> "$GITHUB_OUTPUT"
 
+      # This exact post-MCP-retirement version has no MCP_ACCESS_TOKEN and is
+      # the independently verified compatible recovery baseline. No other ID
+      # can be selected by a workflow_dispatch input. D1 is never rolled back.
+      - name: Restore reviewed compatible Provider Worker Version
+        if: inputs.restore_reviewed_version
+        id: restore
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
+          node scripts/release-guard.mjs legacy
+          reviewed="6e9a914c-e5cd-4842-8f62-5907087facea"
+          current="$(node scripts/release-guard.mjs preflight | sed -n 's/.*active Version ID: //p')"
+          [[ "$current" != "$reviewed" ]] || {
+            echo "Reviewed baseline already active; refusing unnecessary production change" >&2
+            exit 1
+          }
+          log="$(mktemp)"
+          chmod 600 "$log"
+          trap 'rm -f "$log"' EXIT
+          if ! (cd apps/weixin-mcp-worker &&
+              pnpm exec wrangler versions deploy "$reviewed@100%" --yes --name weixin-mcp-worker) >"$log" 2>&1; then
+            echo "Compatible Provider recovery deployment failed; inspect before any further action" >&2
+            exit 1
+          fi
+          echo "version_id=$reviewed" >> "$GITHUB_OUTPUT"
+
       - name: Verify exact active Cloudflare Worker Version ID and bindings
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          EXPECTED_VERSION_ID: ${{ steps.secret_retire.outputs.version_id || steps.publish.outputs.version_id }}
+          EXPECTED_VERSION_ID: ${{ steps.restore.outputs.version_id || steps.secret_retire.outputs.version_id || steps.publish.outputs.version_id }}
         run: node scripts/release-guard.mjs readback

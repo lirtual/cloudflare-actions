@@ -44,3 +44,20 @@ Sessions and prior indeterminate Runs remain protected.
 Never rotate/remove the encryption key, delete D1 history, reset binding,
 replay an unknown invocation or bypass the Workflow release fence.
 See `apps/weixin-mcp-worker/README.md` for technical checks.
+
+
+### Compatible Provider recovery
+
+The **same** main-only manual `Release Weixin Provider` GitHub Action has
+`restore_reviewed_version=true` for a separately approved recovery. It may
+restore only the independently verified post-MCP-retirement, secret-free
+Worker Version ID `6e9a914c-e5cd-4842-8f62-5907087facea`; no arbitrary
+version input, second publisher, restored MCP public domain or bearer token.
+This is a dormant recovery path, not a request to run a rollback as a test.
+
+Before any actual restoration, verify the consuming Workflow is paused or
+fully drained, align its exact `WEIXIN_ACTION_DEPLOYMENT_ID` via the existing
+guarded release, and review the active Secret/D1/Owner bindings. A restored
+Provider does **not** roll back D1, replay messages, replace Owner identity
+or resolve historical `unknown` receipts. Do not deploy the old pre-retirement
+versions that could restore removed MCP credentials.
