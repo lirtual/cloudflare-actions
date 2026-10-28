@@ -27,3 +27,13 @@ test("wrong binding, URL or input identity cannot dispatch",async()=>{
  await assert.rejects(()=>sendTextAction(x.env,{invocation_id:invocation,binding_generation:1,session_url:"http://127.0.0.1/x"},d,async()=>{}),/invalid_trusted_url/);
  assert.equal(sends,0);
 });
+
+test("generation changed during pre-send sync cannot reroute the invocation",async()=>{
+ const x=fixture();await x.ready(1);let dispatches=0;
+ const dispatch=async()=>{dispatches++;return "accepted" as const;};
+ const synchronize=async()=>{await x.ready(2);};
+ await assert.rejects(()=>sendTextAction(x.env,{invocation_id:invocation,binding_generation:1,
+  session_url:"https://safe.trycloudflare.com/"},dispatch,synchronize),/binding_generation_changed/);
+ assert.equal(dispatches,0);
+ assert.equal(x.sql.prepare("SELECT count(*) AS n FROM weixin_send_receipts").get()?.n,0);
+});
