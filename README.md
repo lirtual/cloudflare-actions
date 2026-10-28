@@ -16,9 +16,9 @@ Worker identity**, not a public MCP capability.
   configuration. Only the Cloudflare Access-protected Owner management
   domain `weixin.lirtual.dpdns.org` remains.
 - `WEIXIN_ENCRYPTION_KEY`, historical D1 and stored receipts are preserved.
-  The old `MCP_ACCESS_TOKEN` is no longer consumed by the source. Existing
-  Worker Secrets are retained during normal Wrangler deploy and should
-  never be re-created merely because their plaintext is unavailable.
+  The old `MCP_ACCESS_TOKEN` is no longer consumed by the source. The existing
+  manual release passes a JSON null *only for this legacy key* to retire it
+  atomically, while omitting and inheriting the irreplaceable encryption key.
 - A send can return `accepted`, `rejected` or `unknown`. The owner
   confirmed message delivery for the production E2E, while the stored
   upstream acknowledgement remains `unknown`. Both facts are retained.
