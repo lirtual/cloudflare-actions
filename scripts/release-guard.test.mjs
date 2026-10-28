@@ -94,6 +94,12 @@ test('release stays manual, main-only, scoped to one Worker and outside CI',()=>
   assert.match(release,/wrangler versions deploy "\$version@100%" --yes/);
   assert.match(release,/7ec859d0-438a-4814-807a-fa58486eaf49/);
   assert.match(release,/inputs.retire_legacy_secret/);
+  assert.match(release,/inputs.restore_reviewed_version/);
+  assert.match(release,/Reject conflicting one-time retirement and recovery requests/);
+  assert.match(release,/wrangler versions deploy "\$reviewed@100%" --yes --name weixin-mcp-worker/);
+  assert.match(release,/reviewed="6e9a914c-e5cd-4842-8f62-5907087facea"/);
+  assert.match(release,/steps\.restore\.outputs\.version_id/);
+  assert.doesNotMatch(release,/restore_version_id:\s*\n/);
   assert.doesNotMatch(release,/--secrets-file/);
   assert.doesNotMatch(release,/secrets\.WEIXIN_ENCRYPTION_KEY|secrets\.MCP_ACCESS_TOKEN/);
   assert.doesNotMatch(release,/release-guard.mjs keyproof|wrangler d1 execute/);
