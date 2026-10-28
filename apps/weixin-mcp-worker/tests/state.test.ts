@@ -10,7 +10,7 @@ const id='9c87e9bc-3678-4c0a-88cd-6714c5d63ef4';
 const second='21d0b0af-15e4-4cb9-b6c9-58d9e9b35a36';
 class FakeD1 {
   readonly sql=new DatabaseSync(':memory:');
-  constructor(){this.sql.exec(readFileSync(new URL('../migrations/0001_owner.sql',import.meta.url),'utf8'));}
+  constructor(){this.sql.exec(readFileSync(new URL('../migrations/0001_owner.sql',import.meta.url),'utf8'));this.sql.exec(readFileSync(new URL('../migrations/0002_send_rejection_codes.sql',import.meta.url),'utf8'));}
   prepare(query:string){
     const statement=this.sql.prepare(query);
     const wrapped=(args:unknown[])=>({
@@ -29,7 +29,7 @@ function fixture(){
   async function bindReady(generation=1){
     const sealed=await encrypt(env,'weixin:owner:binding:'+generation,session);
     db.sql.prepare('UPDATE weixin_binding SET generation=?,state=?,session_ciphertext=?,session_key_id=?,last_verified_context_at=?,last_sync_at=? WHERE id=1')
-      .run(generation,'ready',sealed.ciphertext,sealed.keyId,123456789,123456790);
+      .run(generation,'ready',sealed.ciphertext,sealed.keyId,Math.floor(Date.now()/1000),Math.floor(Date.now()/1000));
     return sealed;
   }
   return {db,env,session,bindReady};
@@ -42,7 +42,7 @@ test('D1 migration contains no plaintext message columns; unbound status blocks 
   await assert.rejects(()=>sendOnce(env,'hello',id,async()=>{sends++;return 'accepted';}),/binding_not_ready/);
   assert.equal(sends,0);
   const columns=db.sql.prepare('pragma table_info(weixin_send_receipts)').all().map(c=>c.name);
-  assert.deepEqual(columns,['generation','request_id','text_digest','status','created_at','updated_at']);
+  assert.deepEqual(columns,['generation','request_id','text_digest','status','created_at','updated_at','upstream_ret','upstream_errcode']);
 });
 test('AES-GCM generation AAD, tamper detection and ciphertext at rest',async()=>{
   const {env,session,bindReady,db}=fixture();
@@ -77,7 +77,7 @@ test('unknown outcome and process failure remain reserved and cannot replay',asy
   assert.equal(same.status,'unknown');assert.equal(same.duplicate,true);
   assert.equal(attempts,1);
   // Crash immediately after reservation: no process receives an ack.
-  db.sql.prepare('INSERT INTO weixin_send_receipts VALUES(?,?,?,?,?,?)')
+  db.sql.prepare('INSERT INTO weixin_send_receipts(generation,request_id,text_digest,status,created_at,updated_at) VALUES(?,?,?,?,?,?)')
     .run(1,second,'a'.repeat(64),'unknown',100,100);
   assert.equal(db.sql.prepare('SELECT status FROM weixin_send_receipts WHERE request_id=?').get(second)?.status,'unknown');
 });
@@ -116,4 +116,34 @@ test('duplicate receipts never poll, new requests fail closed on unavailable syn
   await assert.rejects(()=>sendOnce(env,'new text',second,send,async()=>{polls++;throw new Error('poll unavailable');}),/poll unavailable/);
   assert.equal(dispatches,1);
   assert.equal(db.sql.prepare('SELECT count(*) AS n FROM weixin_send_receipts').get()?.n,1);
+});
+
+test('stale and missing Owner context stop a new send before durable reservation',async()=>{
+ const {env,db,bindReady}=fixture();await bindReady();
+ let sends=0,polls=0;
+ const send=async()=>{sends++;return 'accepted' as const;};
+ const sync=async()=>{polls++;};
+ db.sql.prepare('UPDATE weixin_binding SET last_verified_context_at=?').run(Math.floor(Date.now()/1000)-86401);
+ await assert.rejects(()=>sendOnce(env,'old context',id,send,sync),/owner_context_stale/);
+ db.sql.prepare('UPDATE weixin_binding SET last_verified_context_at=NULL').run();
+ await assert.rejects(()=>sendOnce(env,'missing context',id,send,sync),/owner_context_stale/);
+ assert.equal(polls,2);assert.equal(sends,0);
+ assert.equal(db.sql.prepare('SELECT count(*) AS n FROM weixin_send_receipts').get()?.n,0);
+});
+
+test('definite upstream rejection stores bounded codes, unknown stores none and duplicate never resends',async()=>{
+ const {env,db,bindReady}=fixture();await bindReady();
+ let sends=0;
+ const result=await sendOnce(env,'reject test',id,async()=>{
+  sends++;return {status:'rejected' as const,upstream_ret:-2,upstream_errcode:1001};
+ });
+ assert.equal(result.status,'rejected');
+ const row=db.sql.prepare('SELECT upstream_ret,upstream_errcode,status FROM weixin_send_receipts WHERE request_id=?').get(id)!;
+ assert.equal(row.status,'rejected');assert.equal(row.upstream_ret,-2);assert.equal(row.upstream_errcode,1001);
+ const dup=await sendOnce(env,'reject test',id,async()=>{sends++;return 'accepted';});
+ assert.equal(dup.status,'rejected');assert.equal(dup.duplicate,true);assert.equal(sends,1);
+ const uncertain=await sendOnce(env,'maybe delivered',second,async()=>{throw Error('network fail');});
+ assert.equal(uncertain.status,'unknown');
+ const row2=db.sql.prepare('SELECT status,upstream_ret,upstream_errcode FROM weixin_send_receipts WHERE request_id=?').get(second)!;
+ assert.equal(row2.status,'unknown');assert.equal(row2.upstream_ret,null);assert.equal(row2.upstream_errcode,null);
 });

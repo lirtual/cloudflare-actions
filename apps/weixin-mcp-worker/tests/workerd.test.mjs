@@ -9,7 +9,7 @@ import {acquireLease,releaseLease,unbindLocal} from '../src/lease.ts';
 // Exercise Cloudflare's workerd/D1 implementation, not the node:sqlite adapter.
 // Every token, account and receipt here is synthetic. No Tencent call is made.
 const scriptPath=fileURLToPath(new URL('../.build/weixin/index.js',import.meta.url));
-const migration=readFileSync(new URL('../migrations/0001_owner.sql',import.meta.url),'utf8');
+const migration=['0001_owner.sql','0002_send_rejection_codes.sql'].map(m=>readFileSync(new URL('../migrations/'+m,import.meta.url),'utf8')).join('\n');
 async function applyMigration(db){
   // D1.exec treats each *line* as an SQL command; this reviewed migration
   // contains multiline CREATE statements. Use D1's transactional batch API.

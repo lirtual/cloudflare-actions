@@ -38,3 +38,27 @@ Do not edit immutable Published Plans or override a D1 release fence.
 Run `corepack pnpm run check` from the repository root for SQLite tests,
 synthetic iLink/QR tests, real local workerd D1/RPC tests, TypeScript checks,
 and Wrangler dry-run. No live Tencent request is performed by these checks.
+
+## Owner context preflight and numeric reject diagnostics (source-only proposal)
+
+New sends still perform the existing bounded `getUpdates` sync. If the latest
+verified direct Owner message is older than **24 hours** (or absent), reject
+with `owner_context_stale` *before* durable reservation or Tencent dispatch.
+This is a conservative local policy, **not** a documented Tencent token TTL.
+The Owner must send a new direct message before starting a separately authorized
+new Invocation. Matching, already-reserved historical IDs are read without
+polling or resending. Verified Owner messages refresh the observation time
+even if their context token is unchanged; strangers and groups never do.
+
+The additive migration `migrations/0002_send_rejection_codes.sql` adds
+nullable bounded integer `upstream_ret`/`upstream_errcode` fields to D1
+receipts for **definitive** business rejects only. Unknown or ambiguous
+transport retains `unknown` with NULL diagnostics. No token, raw errmsg,
+message body or personal identity is written or exposed by Action RPC.
+
+**Production authorization is separate.** Review and apply the additive D1
+migration to the existing database **before** publishing code that writes
+these columns. Verify the schema and historical receipts read-only, then use
+the single existing main-only Provider release plus the separately reviewed
+Workflow exact version pin release. This PR makes no production Cloudflare
+write and sends no Weixin messages.

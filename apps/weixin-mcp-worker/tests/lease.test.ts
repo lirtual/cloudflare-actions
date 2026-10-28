@@ -10,7 +10,7 @@ const ID='9c87e9bc-3678-4c0a-88cd-6714c5d63ef4';
 const OTHER='21d0b0af-15e4-4cb9-b6c9-58d9e9b35a36';
 class Db {
   sql=new DatabaseSync(':memory:');
-  constructor(){this.sql.exec(readFileSync(new URL('../migrations/0001_owner.sql',import.meta.url),'utf8'));}
+  constructor(){this.sql.exec(readFileSync(new URL('../migrations/0001_owner.sql',import.meta.url),'utf8'));this.sql.exec(readFileSync(new URL('../migrations/0002_send_rejection_codes.sql',import.meta.url),'utf8'));}
   prepare(query:string){
     const stmt=this.sql.prepare(query);
     const prepared=(args:unknown[])=>({
@@ -27,8 +27,8 @@ async function setup() {
     contextToken:'very-secret-context',cursor:'cursor-0'};
   async function ready(g=1){
     const sealed=await encrypt(env,'weixin:owner:binding:'+g,session);
-    db.sql.prepare('UPDATE weixin_binding SET generation=?,state=?,session_ciphertext=?,session_key_id=? WHERE id=1')
-      .run(g,'ready',sealed.ciphertext,sealed.keyId);
+    db.sql.prepare('UPDATE weixin_binding SET generation=?,state=?,session_ciphertext=?,session_key_id=?,last_verified_context_at=? WHERE id=1')
+      .run(g,'ready',sealed.ciphertext,sealed.keyId,Math.floor(Date.now()/1000));
   }
   await ready();
   return {db,env,session,ready};
@@ -203,4 +203,32 @@ test('owner context updates even when cursor remains unchanged; unrelated messag
   const saved=await decrypt<IlinkSession>(env,'weixin:owner:binding:1',
     row.session_ciphertext as string,row.session_key_id as string);
   assert.equal(saved.contextToken,'new-context');
+});
+
+test('authenticated Owner message refreshes timestamp with identical context token and cursor',async()=>{
+ const {db,env,session}=await setup();
+ db.sql.prepare('UPDATE weixin_binding SET last_verified_context_at=?').run(Math.floor(Date.now()/1000)-90000);
+ let sends=0;
+ await assert.rejects(()=>sendOnce(env,'before',ID,async()=>{sends++;return 'accepted';}),/owner_context_stale/);
+ assert.equal(await syncCursorOnce(env,async()=>({
+  get_updates_buf:session.cursor,
+  msgs:[{from_user_id:'owner',to_user_id:'bot',message_type:1,context_token:session.contextToken}]
+ })),'unchanged');
+ const row=db.sql.prepare('SELECT last_verified_context_at FROM weixin_binding').get()!;
+ assert.ok(Number(row.last_verified_context_at)>=Math.floor(Date.now()/1000)-2);
+ assert.equal((await sendOnce(env,'after',ID,async()=>{sends++;return 'accepted';})).status,'accepted');
+ assert.equal(sends,1);
+});
+
+test('unverified messages cannot refresh an old verified Owner context',async()=>{
+ const {db,env,session}=await setup();
+ db.sql.prepare('UPDATE weixin_binding SET last_verified_context_at=?').run(Math.floor(Date.now()/1000)-90000);
+ await syncCursorOnce(env,async()=>({
+  get_updates_buf:session.cursor,
+  msgs:[{from_user_id:'attacker',to_user_id:'bot',message_type:1,context_token:'wrong'}]
+ }));
+ let attempts=0;
+ await assert.rejects(()=>sendOnce(env,'stop',ID,async()=>{attempts++;return 'accepted';}),/owner_context_stale/);
+ assert.equal(attempts,0);
+ assert.equal(db.sql.prepare('SELECT count(*) AS n FROM weixin_send_receipts').get()?.n,0);
 });

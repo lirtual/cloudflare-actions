@@ -8,7 +8,18 @@ export type SendReply = {
   request_id: string; status: SendStatus; duplicate: boolean;
   next_action: 'check_handset'|'check_handset_before_new_request'|'review_error';
 };
-export type Dispatcher = (session:IlinkSession,text:string,requestId:string)=>Promise<SendStatus>;
+export type RejectedSend={status:'rejected';upstream_ret:number|null;upstream_errcode:number|null};
+export type Dispatcher=(session:IlinkSession,text:string,requestId:string)=>Promise<SendStatus|RejectedSend>;
+// Conservative local preflight, not an asserted upstream token TTL.
+export const MAX_OWNER_CONTEXT_AGE_SECONDS=24*60*60;
+function requireFreshOwnerContext(binding:Binding,now:number):void{
+ const ts=binding.last_verified_context_at;
+ if(!Number.isSafeInteger(ts)||ts===null||ts<=0||ts>now||now-ts>MAX_OWNER_CONTEXT_AGE_SECONDS)
+  fail('owner_context_stale');
+}
+function boundedCode(n:unknown):number|null{
+ return typeof n==='number'&&Number.isSafeInteger(n)&&Math.abs(n)<=999999999?n:null;
+}
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const encoder = new TextEncoder();
 function reply(request_id:string,status:SendStatus,duplicate:boolean):SendReply {
@@ -75,8 +86,12 @@ export async function sendOnce(env:Env,text:string,requestId:string,dispatch:Dis
     if(!binding||binding.state!=='ready'||!binding.session_ciphertext||!binding.session_key_id)
       fail('binding_not_ready');
   }
+  // A successful poll alone does not refresh an old Owner context.
+  // Stop before reservation, and recheck while holding the binding lease.
+  requireFreshOwnerContext(binding,Math.floor(Date.now()/1000));
   const lease=await acquireLease(env,binding.generation,['ready']);
   try {
+  requireFreshOwnerContext(await readUnderLease(env,lease),Math.floor(Date.now()/1000));
   // Durable, atomic claim BEFORE sending. This insert reads the current
   // binding generation in the same SQL statement (never a SELECT+INSERT pair).
   const claim=await env.DB.prepare(
@@ -106,15 +121,23 @@ export async function sendOnce(env:Env,text:string,requestId:string,dispatch:Dis
     // The provider write timeout is 12s, safely inside the 120s DB lease.
     // Never dispatch with a lease already near expiration.
     if(Date.now()+20000>=lease.expiresAt*1000)return reply(requestId,'unknown',false);
-    const result=await dispatch(session,text,requestId);
-    // A lost DB response or crash leaves the pre-claimed receipt unknown.
+    const dispatched=await dispatch(session,text,requestId);
+    const result=typeof dispatched==='string'?dispatched:dispatched.status;
+    // Adapter ambiguity can never become a definite acknowledgement.
+    if(result!=='accepted'&&result!=='rejected'&&result!=='unknown')
+      return reply(requestId,'unknown',false);
+    const rejected=typeof dispatched==='object'&&dispatched?.status==='rejected'?dispatched:null;
+    // Store only bounded numbers from definitive business rejections.
+    // No token, message, errmsg or unreviewed upstream payload is persisted.
     if(result!=='unknown'){
       const updated=await env.DB.prepare(
-        'UPDATE weixin_send_receipts SET status=?,updated_at=? '+
+        'UPDATE weixin_send_receipts SET status=?,updated_at=?,upstream_ret=?,upstream_errcode=? '+
         "WHERE generation=? AND request_id=? AND status='unknown' "+
         "AND EXISTS(SELECT 1 FROM weixin_binding WHERE id=1 AND generation=? AND lease_holder=? AND lease_until>?)"
-      ).bind(result,Math.floor(Date.now()/1000),binding.generation,requestId,
-        binding.generation,lease.owner,Math.floor(Date.now()/1000)).run();
+      ).bind(result,Math.floor(Date.now()/1000),
+        result==='rejected'?boundedCode(rejected?.upstream_ret):null,
+        result==='rejected'?boundedCode(rejected?.upstream_errcode):null,
+        binding.generation,requestId,binding.generation,lease.owner,Math.floor(Date.now()/1000)).run();
       if(updated.meta.changes!==1)return reply(requestId,'unknown',false);
     }
     return reply(requestId,result,false);

@@ -1,5 +1,5 @@
 import {sha256,decrypt} from "./crypto.ts";
-import {readStoredReceipt,sendOnce,type Dispatcher,type SendStatus} from "./state.ts";
+import {readStoredReceipt,sendOnce,type Dispatcher,type SendStatus,type RejectedSend} from "./state.ts";
 import {WeixinError,type Env,type IlinkSession} from "./types.ts";
 import {syncCursorOnce} from "./lease.ts";
 // @ts-ignore local JS protocol is exercised by existing compatibility tests.
@@ -90,11 +90,19 @@ export async function readActionReceipt(env:Env,query:ReceiptQuery){
   invalid("invocation_identity_conflict");
  return {status:row.status};
 }
-async function upstreamSend(session:IlinkSession,body:string,requestId:string):Promise<SendStatus>{
+async function upstreamSend(session:IlinkSession,body:string,requestId:string):Promise<SendStatus|RejectedSend>{
  try{const api=createIlinkClient();const result=await api.sendText({botToken:session.botToken,
    recipientId:session.ownerId,contextToken:session.contextToken,requestId,text:body});
   return result.status==="accepted"?"accepted":"unknown";
- }catch(err){return (err as {code?:string})?.code==="UPSTREAM_REJECTED"?"rejected":"unknown";}
+ }catch(err){
+  if((err as {code?:string})?.code!=="UPSTREAM_REJECTED")return "unknown";
+  // Protocol exposes bounded numeric diagnostic fields, not errmsg or raw body.
+  const diagnostic=(err as {diagnostic?:{ret?:unknown;errcode?:unknown}}).diagnostic;
+  const bounded=(n:unknown):number|null=>
+    typeof n==="number"&&Number.isSafeInteger(n)&&Math.abs(n)<=999999999?n:null;
+  return {status:"rejected",upstream_ret:bounded(diagnostic?.ret),
+    upstream_errcode:bounded(diagnostic?.errcode)};
+ }
 }
 /** Send through the existing durable D1 reservation. Never auto-retry unknown. */
 export async function sendTextAction(env:Env,input:TextInvocation,dispatch:Dispatcher=upstreamSend,

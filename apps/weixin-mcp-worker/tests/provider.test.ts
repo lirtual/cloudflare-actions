@@ -8,10 +8,10 @@ import type {Env} from "../src/types.ts";
 const invocation="62f76e7a-c614-47b0-bf13-50d85f9de992";
 const deployment="33333333-3333-4333-8333-333333333333";
 function fixture(){
- const sql=new DatabaseSync(":memory:");sql.exec(readFileSync(new URL("../migrations/0001_owner.sql",import.meta.url),"utf8"));
+ const sql=new DatabaseSync(":memory:");sql.exec(readFileSync(new URL("../migrations/0001_owner.sql",import.meta.url),"utf8"));sql.exec(readFileSync(new URL('../migrations/0002_send_rejection_codes.sql',import.meta.url),'utf8'));
  const db={prepare(query:string){const stmt=sql.prepare(query);const call=(args:unknown[])=>({first:async<T>()=>(stmt.get(...args as [])??null) as T|null,run:async()=>({meta:{changes:Number(stmt.run(...args as []).changes)}})});return {...call([]),bind:(...args:unknown[])=>call(args)};}};
  const env={DB:db as unknown as D1Database,WEIXIN_ENCRYPTION_KEY:Buffer.alloc(32,17).toString("base64"),CF_VERSION_METADATA:{id:deployment}} as Env;
- return {sql,env,async ready(generation=1){const session={botToken:"token",ownerId:"owner",botId:"bot",contextToken:"context",cursor:"cursor"};const v=await encrypt(env,"weixin:owner:binding:"+generation,session);sql.prepare("UPDATE weixin_binding SET generation=?,state=\u0027ready\u0027,session_ciphertext=?,session_key_id=? WHERE id=1").run(generation,v.ciphertext,v.keyId);}};
+ return {sql,env,async ready(generation=1){const session={botToken:"token",ownerId:"owner",botId:"bot",contextToken:"context",cursor:"cursor"};const v=await encrypt(env,"weixin:owner:binding:"+generation,session);sql.prepare("UPDATE weixin_binding SET generation=?,state=\u0027ready\u0027,session_ciphertext=?,session_key_id=?,last_verified_context_at=? WHERE id=1").run(generation,v.ciphertext,v.keyId,Math.floor(Date.now()/1000));}};
 }
 test("one reviewed action invocation is sent at most once; receipt stays queryable after unbind",async()=>{
  const x=fixture();await x.ready();const identity=await bindingIdentity(x.env);assert.deepEqual(identity,{generation:1,ready:true});
