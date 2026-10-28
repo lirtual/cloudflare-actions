@@ -72,8 +72,12 @@ test('release stays manual, main-only, scoped to one Worker and outside CI',()=>
   assert.match(release,/deploy_to_production == true/);
   assert.match(release,/environment: weixin-provider/);
   assert.match(release,/node scripts\/release-guard.mjs legacy/g);
-  assert.match(release,/pnpm exec wrangler deploy --secrets-file/);
-  assert.match(release,/\{"MCP_ACCESS_TOKEN":null\}/);
+  assert.match(release,/pnpm exec wrangler deploy/);
+  assert.match(release,/wrangler versions secret delete MCP_ACCESS_TOKEN/);
+  assert.match(release,/wrangler versions deploy "\$version@100%" --yes/);
+  assert.match(release,/7ec859d0-438a-4814-807a-fa58486eaf49/);
+  assert.match(release,/inputs.retire_legacy_secret/);
+  assert.doesNotMatch(release,/--secrets-file/);
   assert.doesNotMatch(release,/secrets\.WEIXIN_ENCRYPTION_KEY|secrets\.MCP_ACCESS_TOKEN/);
   assert.doesNotMatch(release,/release-guard.mjs keyproof|wrangler d1 execute/);
   assert.doesNotMatch(ci,/wrangler deploy --secrets-file/);
