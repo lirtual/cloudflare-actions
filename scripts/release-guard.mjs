@@ -59,8 +59,13 @@ export function verifyReadback(settings,secrets,deployments,expectedVersion,scri
     'Production inherited encryption Secret missing');
   // Preflight may still observe the currently deployed legacy MCP bindings.
   // Once a new version is deployed, keep_vars=false must remove MCP_HOST.
-  if(expectedVersion)requireOk(find('MCP_HOST','plain_text').length===0,
-    'Legacy MCP host still present after Provider release');
+  if(expectedVersion){
+    requireOk(find('MCP_HOST','plain_text').length===0,
+      'Legacy MCP host still present after Provider release');
+    requireOk(find('MCP_ACCESS_TOKEN','secret_text').length===0 &&
+      !secrets.some(x=>x.name==='MCP_ACCESS_TOKEN'),
+      'Legacy MCP Bearer Secret still present after Provider release');
+  }
   if(scriptSettings!==undefined)requireOk(
     scriptSettings?.observability?.logs?.invocation_logs===false,
     'Production Worker invocation logging must remain disabled');

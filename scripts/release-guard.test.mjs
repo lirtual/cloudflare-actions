@@ -52,6 +52,9 @@ test('production readback rejects altered D1, missing secret and wrong versions'
   assert.throws(()=>verifyReadback({...settings,bindings:[{name:'DB',type:'d1',id:version}]},secrets,deploy),/D1/);
   assert.throws(()=>verifyReadback(settings,[],deploy),/Secret/);
   assert.equal(verifyReadback(cleaned,[{name:'WEIXIN_ENCRYPTION_KEY'}],deploy,version),version);
+  assert.throws(()=>verifyReadback(
+    {...cleaned,bindings:[...cleaned.bindings,{name:'MCP_ACCESS_TOKEN',type:'secret_text'}]},
+    secrets,deploy,version),/Legacy MCP Bearer/);
   assert.throws(()=>verifyReadback(settings,secrets,deploy,version),/Legacy MCP host/);
   assert.throws(()=>verifyReadback({...cleaned,bindings:cleaned.bindings.filter(x=>x.name!=='WEIXIN_ENCRYPTION_KEY')},secrets,deploy),/Secret/);
   assert.throws(()=>verifyReadback(settings,secrets,{deployments:[{versions:[{percentage:50,version_id:version}]}]}),/traffic/);
@@ -69,8 +72,9 @@ test('release stays manual, main-only, scoped to one Worker and outside CI',()=>
   assert.match(release,/deploy_to_production == true/);
   assert.match(release,/environment: weixin-provider/);
   assert.match(release,/node scripts\/release-guard.mjs legacy/g);
-  assert.match(release,/pnpm exec wrangler deploy/);
-  assert.doesNotMatch(release,/--secrets-file|secrets\.WEIXIN_ENCRYPTION_KEY|secrets\.MCP_ACCESS_TOKEN/);
+  assert.match(release,/pnpm exec wrangler deploy --secrets-file/);
+  assert.match(release,/\{"MCP_ACCESS_TOKEN":null\}/);
+  assert.doesNotMatch(release,/secrets\.WEIXIN_ENCRYPTION_KEY|secrets\.MCP_ACCESS_TOKEN/);
   assert.doesNotMatch(release,/release-guard.mjs keyproof|wrangler d1 execute/);
   assert.doesNotMatch(ci,/wrangler deploy --secrets-file/);
 });
@@ -89,7 +93,7 @@ test('Cloudflare account is a 32-character account ID; readback is read-only',as
     CLOUDFLARE_API_TOKEN:'abcdefghijklmnopqrst'},undefined,fake),version);
   const retiredMock=async(url,opts)=>fake(url,opts).then(x=>({
     ...x,json:async()=>({success:true,result:url.endsWith('/settings')?
-      {...existing.settings,bindings:existing.settings.bindings.filter(y=>y.name!=='MCP_HOST')}:
+      {...existing.settings,bindings:existing.settings.bindings.filter(y=>!['MCP_HOST','MCP_ACCESS_TOKEN'].includes(y.name))}:
       url.endsWith('/secrets')?[{name:'WEIXIN_ENCRYPTION_KEY'}]:
       await x.json().then(v=>v.result)})
   }));

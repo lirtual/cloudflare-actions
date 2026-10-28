@@ -53,8 +53,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: node scripts/release-guard.mjs preflight
 
-      # Existing production Worker Secrets are inherited from Cloudflare.
-      # Never stage replacement keys: their original values are unavailable.
+      # Wrangler >=4.97 JSON null deletes exactly the obsolete MCP Bearer
+      # Secret in the same Worker version as the source cleanup. Omitted
+      # WEIXIN_ENCRYPTION_KEY is inherited intact; never stage or rotate it.
 
       - name: Publish reviewed Provider only after rechecking old and new main
         id: publish
@@ -67,9 +68,11 @@ jobs:
           [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
           node scripts/release-guard.mjs legacy
           log="$(mktemp)"
-          chmod 600 "$log"
-          trap 'rm -f "$log"' EXIT
-          if ! (cd apps/weixin-mcp-worker && pnpm exec wrangler deploy) >"$log" 2>&1; then
+          retire="$(mktemp)"
+          chmod 600 "$log" "$retire"
+          trap 'rm -f "$log" "$retire"' EXIT
+          printf '%s\n' '{"MCP_ACCESS_TOKEN":null}' >"$retire"
+          if ! (cd apps/weixin-mcp-worker && pnpm exec wrangler deploy --secrets-file "$retire") >"$log" 2>&1; then
             echo "Provider deploy failed; no automatic rollback or resend performed" >&2
             exit 1
           fi
