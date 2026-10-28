@@ -7,6 +7,11 @@ on:
         type: boolean
         required: true
         default: false
+      retire_legacy_secret:
+        description: One-time versioned MCP Bearer Secret retirement for reviewed active Provider version
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -53,11 +58,11 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: node scripts/release-guard.mjs preflight
 
-      # Wrangler >=4.97 JSON null deletes exactly the obsolete MCP Bearer
-      # Secret in the same Worker version as the source cleanup. Omitted
-      # WEIXIN_ENCRYPTION_KEY is inherited intact; never stage or rotate it.
-
+      # Wrangler deploy preserves existing Secrets, including the encryption key.
+      # One-time legacy token cleanup uses a versioned operation in this same
+      # manual GitHub Actions publisher, never a direct alternative deployment.
       - name: Publish reviewed Provider only after rechecking old and new main
+        if: ${{ !inputs.retire_legacy_secret }}
         id: publish
         shell: bash
         env:
@@ -68,20 +73,51 @@ jobs:
           [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
           node scripts/release-guard.mjs legacy
           log="$(mktemp)"
-          retire="$(mktemp)"
-          chmod 600 "$log" "$retire"
-          trap 'rm -f "$log" "$retire"' EXIT
-          printf '%s\n' '{"MCP_ACCESS_TOKEN":null}' >"$retire"
-          if ! (cd apps/weixin-mcp-worker && pnpm exec wrangler deploy --secrets-file "$retire") >"$log" 2>&1; then
+          chmod 600 "$log"
+          trap 'rm -f "$log"' EXIT
+          if ! (cd apps/weixin-mcp-worker && pnpm exec wrangler deploy) >"$log" 2>&1; then
             echo "Provider deploy failed; no automatic rollback or resend performed" >&2
             exit 1
           fi
           version="$(node scripts/release-guard.mjs version "$log")"
           echo "version_id=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Retire legacy Bearer Secret through a new reviewed Worker Version
+        if: inputs.retire_legacy_secret
+        id: secret_retire
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
+          node scripts/release-guard.mjs legacy
+          current="$(node scripts/release-guard.mjs preflight | sed -n 's/.*active Version ID: //p')"
+          [[ "$current" == "7ec859d0-438a-4814-807a-fa58486eaf49" ]] || {
+            echo "One-time Secret retirement aborted: unexpected active Provider version" >&2
+            exit 1
+          }
+          log="$(mktemp)"
+          chmod 600 "$log"
+          trap 'rm -f "$log"' EXIT
+          if ! (cd apps/weixin-mcp-worker &&
+              pnpm exec wrangler versions secret delete MCP_ACCESS_TOKEN --name weixin-mcp-worker) >"$log" 2>&1; then
+            echo "Secret version creation failed, no deployment requested" >&2
+            exit 1
+          fi
+          version="$(node scripts/release-guard.mjs version "$log")"
+          [[ "$version" != "$current" ]]
+          if ! (cd apps/weixin-mcp-worker &&
+              pnpm exec wrangler versions deploy "$version@100%" --yes --name weixin-mcp-worker) >"$log" 2>&1; then
+            echo "Secret-free version deployment failed; inspect created version, do not retry writes" >&2
+            exit 1
+          fi
+          echo "version_id=$version" >> "$GITHUB_OUTPUT"
+
       - name: Verify exact active Cloudflare Worker Version ID and bindings
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          EXPECTED_VERSION_ID: ${{ steps.publish.outputs.version_id }}
+          EXPECTED_VERSION_ID: ${{ steps.secret_retire.outputs.version_id || steps.publish.outputs.version_id }}
         run: node scripts/release-guard.mjs readback
