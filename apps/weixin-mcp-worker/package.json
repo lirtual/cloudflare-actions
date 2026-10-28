@@ -10,9 +10,6 @@
     "check": "tsc --noEmit && node --experimental-strip-types --test tests/*.test.ts && node --test poc/*.test.mjs && wrangler deploy src/index.ts --dry-run --outdir .build/weixin --name weixin-mcp-worker --compatibility-date 2026-10-27 && node --experimental-strip-types --test tests/*workerd.test.mjs"
   },
   "dependencies": {
-    "@mcp-workers/portal-auth": "workspace:*",
-    "@modelcontextprotocol/server": "2.0.0",
-    "zod": "4.6.2",
     "qrcode-generator": "2.0.4"
   },
   "devDependencies": {

@@ -42,20 +42,25 @@ export function assertReviewedConfig(conf){
   requireOk(JSON.stringify(hosts)===JSON.stringify(['weixin.lirtual.dpdns.org']),
     'Weixin domain ownership drift');
   requireOk(JSON.stringify(conf.secrets?.required)===
-    JSON.stringify(['MCP_ACCESS_TOKEN','WEIXIN_ENCRYPTION_KEY']),'Weixin Secret inventory drift');
+    JSON.stringify(['WEIXIN_ENCRYPTION_KEY']),'Weixin Secret inventory drift');
+  requireOk(!Object.prototype.hasOwnProperty.call(conf.vars??{},'MCP_HOST'),
+    'Retired public MCP host variable reintroduced');
 }
 export function verifyReadback(settings,secrets,deployments,expectedVersion,scriptSettings){
   requireOk(Array.isArray(settings?.bindings),'Worker bindings unreadable');
   const find=(name,type)=>settings.bindings.filter(x=>x.name===name&&x.type===type);
   requireOk(find('DB','d1').length===1&&find('DB','d1')[0].id===D1_ID,
     'Production D1 binding identity drift');
-  for(const [name,host] of Object.entries({
-    MCP_HOST:'weixin-mcp.lirtual.dpdns.org',ADMIN_HOST:'weixin.lirtual.dpdns.org'
-  }))requireOk(find(name,'plain_text').length===1&&find(name,'plain_text')[0].text===host,
-    'Production host variable drift: '+name);
-  requireOk(Array.isArray(secrets)&&['MCP_ACCESS_TOKEN','WEIXIN_ENCRYPTION_KEY'].every(
-    x=>secrets.filter(y=>y.name===x).length===1&&
-      find(x,'secret_text').length===1),'Production inherited Secret bindings missing');
+  requireOk(find('ADMIN_HOST','plain_text').length===1&&
+    find('ADMIN_HOST','plain_text')[0].text==='weixin.lirtual.dpdns.org',
+    'Production owner host drift');
+  requireOk(Array.isArray(secrets)&&secrets.filter(y=>y.name==='WEIXIN_ENCRYPTION_KEY').length===1&&
+    find('WEIXIN_ENCRYPTION_KEY','secret_text').length===1,
+    'Production inherited encryption Secret missing');
+  // Preflight may still observe the currently deployed legacy MCP bindings.
+  // Once a new version is deployed, keep_vars=false must remove MCP_HOST.
+  if(expectedVersion)requireOk(find('MCP_HOST','plain_text').length===0,
+    'Legacy MCP host still present after Provider release');
   if(scriptSettings!==undefined)requireOk(
     scriptSettings?.observability?.logs?.invocation_logs===false,
     'Production Worker invocation logging must remain disabled');

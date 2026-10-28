@@ -18,9 +18,7 @@ async function applyMigration(db){
   await db.batch(statements.map(sql=>db.prepare(sql)));
 }
 
-const mcpHost='weixin-mcp.example.org';
 const adminHost='weixin-owner.example.org';
-const portal='test-only-portal-bearer';
 const firstId='f43e7f17-c31d-42bf-8358-b454568c32b0';
 
 function runtime(){
@@ -35,9 +33,7 @@ function runtime(){
       compatibilityDate:'2026-09-15',
       d1Databases:{DB:'weixin-local-test'},
       bindings:{
-        MCP_HOST:mcpHost,
         ADMIN_HOST:adminHost,
-        MCP_ACCESS_TOKEN:portal,
         WEIXIN_ENCRYPTION_KEY:Buffer.alloc(32,17).toString('base64'),
         OWNER_EMAIL:'owner@example.org',
         ACCESS_TEAM_DOMAIN:'owner.cloudflareaccess.com',
@@ -46,17 +42,8 @@ function runtime(){
     }],
   }));
 }
-async function call(mf,method,params={},token=portal){
-  const res=await mf.dispatchFetch('https://'+mcpHost+'/mcp',{
-    method:'POST',headers:{
-      'content-type':'application/json',accept:'application/json, text/event-stream',
-      ...(token?{authorization:'Bearer '+token}:{}),
-    },body:JSON.stringify({jsonrpc:'2.0',id:1,method,params}),
-  });
-  return {status:res.status,body:await res.text()};
-}
 
-test('actual workerd D1 migration, ingress authorization, CAS lease and receipt replay fencing',async()=>{
+test('real workerd D1, retired public ingress, CAS lease and historical receipt storage',async()=>{
   const mf=runtime();
   try{
     const db=await mf.getD1Database('DB');
@@ -64,22 +51,16 @@ test('actual workerd D1 migration, ingress authorization, CAS lease and receipt 
     assert.equal((await db.prepare('SELECT state FROM weixin_binding WHERE id=1')
       .first()).state,'unbound');
 
-    const denied=await call(mf,'tools/list',{},null);
-    assert.equal(denied.status,401);
-    assert.doesNotMatch(denied.body,/test-only-portal-bearer/);
-    const list=await call(mf,'tools/list');
-    assert.equal(list.status,200);
-    assert.match(list.body,/weixin_status/);
-    assert.match(list.body,/weixin_send_message/);
-    assert.doesNotMatch(list.body,/weixin_unbind|weixin_start_pairing/);
-    const status=await call(mf,'tools/call',{name:'weixin_status',arguments:{}});
-    assert.equal(status.status,200);
-    assert.match(status.body,/unbound/);
-    assert.doesNotMatch(status.body,/test-only-portal-bearer/);
-    const noBinding=await call(mf,'tools/call',{name:'weixin_send_message',
-      arguments:{text:'synthetic only',request_id:firstId}});
-    assert.equal(noBinding.status,200);
-    assert.match(noBinding.body,/binding_not_ready/);
+    // Public MCP no longer exists even with a former bearer header.
+    const denied=await mf.dispatchFetch('https://weixin-mcp.example.org/mcp',{
+      method:'POST',headers:{authorization:'Bearer old-portal-secret'}
+    });
+    assert.equal(denied.status,404);
+    assert.doesNotMatch(await denied.text(),/weixin_status|weixin_send_message/);
+    const admin=await mf.dispatchFetch('https://'+adminHost+'/setup');
+    assert.equal(admin.status,403);
+    const wrongAdmin=await mf.dispatchFetch('https://untrusted.example.org/setup');
+    assert.equal(wrongAdmin.status,404);
 
     // Workerd-backed SQL lease: two simultaneous contenders cannot both win.
     const t=Math.floor(Date.now()/1000);
@@ -113,27 +94,22 @@ test('actual workerd D1 migration, ingress authorization, CAS lease and receipt 
       "INSERT INTO weixin_send_receipts (generation,request_id,text_digest,status,created_at,updated_at) "+
       "VALUES(1,?,?,'unknown',?,?)"
     ).bind(firstId,digest,t,t).run();
-    const duplicate=await call(mf,'tools/call',{name:'weixin_send_message',
-      arguments:{text:'synthetic only',request_id:firstId}});
-    assert.equal(duplicate.status,200);
-    assert.match(duplicate.body,/\\"unknown\\"/);
-    assert.match(duplicate.body,/\\"duplicate\\":true/);
-    const mismatch=await call(mf,'tools/call',{name:'weixin_send_message',
-      arguments:{text:'different synthetic text',request_id:firstId}});
-    assert.match(mismatch.body,/request_id_conflict/);
+    const existing=await db.prepare(
+      'SELECT status,generation,text_digest FROM weixin_send_receipts WHERE request_id=?'
+    ).bind(firstId).first();
+    assert.equal(existing.status,'unknown');
+    assert.equal(existing.generation,1);
+    assert.equal(existing.text_digest,digest);
     assert.equal((await db.prepare('SELECT count(*) AS n FROM weixin_send_receipts')
       .first()).n,1);
     await db.prepare('UPDATE weixin_binding SET generation=2 WHERE id=1').run();
-    const oldId=await call(mf,'tools/call',{name:'weixin_send_message',
-      arguments:{text:'synthetic only',request_id:firstId}});
-    assert.match(oldId.body,/request_id_generation_conflict/);
-    assert.equal((await db.prepare('SELECT count(*) AS n FROM weixin_send_receipts')
-      .first()).n,1);
+    assert.equal((await db.prepare('SELECT status FROM weixin_send_receipts WHERE request_id=?')
+      .bind(firstId).first()).status,'unknown');
 
     // Owner management stays inaccessible without an Access-signed JWT.
-    const admin=await mf.dispatchFetch('https://'+adminHost+'/setup');
-    assert.equal(admin.status,403);
-    assert.doesNotMatch(await admin.text(),/synthetic-sealed-fixture|owner@example.org/);
+    const adminAgain=await mf.dispatchFetch('https://'+adminHost+'/setup');
+    assert.equal(adminAgain.status,403);
+    assert.doesNotMatch(await adminAgain.text(),/synthetic-sealed-fixture|owner@example.org/);
   }finally{await mf.dispose();}
 });
 
@@ -180,11 +156,6 @@ test('real workerd D1 drives the application QR proof and generation CAS without
     assert.equal(staged.phase,'expired');
     assert.equal(staged.ciphertext,null);
     assert.equal((await pairingView(env,owner)).phase,'none');
-
-    const status=await call(mf,'tools/call',{name:'weixin_status',arguments:{}});
-    assert.equal(status.status,200);
-    assert.match(status.body,/ready/);
-    assert.doesNotMatch(status.body,/synthetic-private-token|synthetic-private-context/);
 
     const lease=await acquireLease(env,1,['ready']);
     await assert.rejects(()=>unbindLocal(env),/binding_busy/);

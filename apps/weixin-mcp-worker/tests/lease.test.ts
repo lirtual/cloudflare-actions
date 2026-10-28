@@ -22,8 +22,7 @@ class Db {
 }
 async function setup() {
   const db=new Db();
-  const env={DB:db as unknown as D1Database, MCP_HOST:'weixin-mcp.example.org',
-    MCP_ACCESS_TOKEN:'test',WEIXIN_ENCRYPTION_KEY:Buffer.alloc(32,9).toString('base64')} as Env;
+  const env={DB:db as unknown as D1Database, WEIXIN_ENCRYPTION_KEY:Buffer.alloc(32,9).toString('base64')} as Env;
   const session:IlinkSession={botToken:'super-secret-token',ownerId:'owner',botId:'bot',
     contextToken:'very-secret-context',cursor:'cursor-0'};
   async function ready(g=1){

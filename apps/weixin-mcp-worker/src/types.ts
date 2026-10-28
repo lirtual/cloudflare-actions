@@ -4,8 +4,6 @@ export type BindingState =
 export type Env = {
   DB: D1Database;
   CF_VERSION_METADATA?: {id:string};
-  MCP_ACCESS_TOKEN: string;
-  MCP_HOST: string;
   ADMIN_HOST: string;
   ACCESS_TEAM_DOMAIN: string;
   ACCESS_AUD: string;
