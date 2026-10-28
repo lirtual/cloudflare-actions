@@ -39,8 +39,7 @@ export function assertReviewedConfig(conf){
     conf.d1_databases[0]?.database_name==='weixin-mcp-db'&&
     conf.d1_databases[0]?.database_id===D1_ID,'Weixin D1 identity drift');
   const hosts=conf.routes?.map(x=>x.custom_domain===true&&x.pattern).sort();
-  requireOk(JSON.stringify(hosts)===JSON.stringify([
-    'weixin-mcp.lirtual.dpdns.org','weixin.lirtual.dpdns.org'].sort()),
+  requireOk(JSON.stringify(hosts)===JSON.stringify(['weixin.lirtual.dpdns.org']),
     'Weixin domain ownership drift');
   requireOk(JSON.stringify(conf.secrets?.required)===
     JSON.stringify(['MCP_ACCESS_TOKEN','WEIXIN_ENCRYPTION_KEY']),'Weixin Secret inventory drift');

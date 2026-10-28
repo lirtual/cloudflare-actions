@@ -32,11 +32,12 @@ test('old publisher must be disabled and all old queued/retryable releases drain
   await assert.rejects(()=>checkSinglePublisher(async()=>({ok:false,status:403})),/could not be checked/);
   await checkSinglePublisher(mock());
 });
-test('Weixin source, legacy domains, D1 and unchanged Secrets stay fixed',()=>{
+test('Weixin source only publishes owner management domain, D1 and Secrets stay fixed',()=>{
   const conf=JSON.parse(readFileSync(new URL('../apps/weixin-mcp-worker/wrangler.jsonc',import.meta.url)));
   assert.doesNotThrow(()=>assertReviewedConfig(conf));
   assert.throws(()=>assertReviewedConfig({...conf,d1_databases:[{...conf.d1_databases[0],database_id:version}]}),/D1/);
   assert.throws(()=>assertReviewedConfig({...conf,routes:[]}),/domain/);
+  assert.throws(()=>assertReviewedConfig({...conf,routes:[...conf.routes,{pattern:'weixin-mcp.lirtual.dpdns.org',custom_domain:true}]}),/domain/);
   assert.throws(()=>assertReviewedConfig({...conf,version_metadata:undefined}),/Metadata/);
 });
 test('production readback rejects altered D1, missing secret and wrong versions',()=>{

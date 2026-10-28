@@ -47,3 +47,19 @@ a compatible rollback baseline has been defined, and a supervised cutover is app
 Secret-name readback and CI cannot prove the existing key is decryptable until the new internal RPC checks it; this does not replace rollback safety validation.
 The original Worker, D1, Access administration and legacy MCP must remain
 operational until the new RPC has been verified.
+
+
+## Legacy public MCP retirement (Spec #392)
+
+The existing owner-confirmed Workflow → Action Provider → Weixin message was
+delivered, but the upstream machine acknowledgement remained `unknown`; do not
+replay or rewrite that durable receipt.
+
+The One-MCP Portal no longer has a Weixin server mapping. The old public
+`weixin-mcp.lirtual.dpdns.org` custom domain is to be detached **only after**
+the reviewed source release configuration removes that route. There is no new
+Worker deployment as part of domain detachment: this preserves the exact live
+Provider Worker Version ID already pinned by the Workflow Service Binding.
+The Access-protected owner setup domain `weixin.lirtual.dpdns.org`,
+the D1 database and original encryption Secret must remain unchanged.
+Subsequent reviewed Provider releases must not recreate the retired route.

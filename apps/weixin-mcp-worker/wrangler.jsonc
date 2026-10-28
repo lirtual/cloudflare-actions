@@ -30,10 +30,6 @@
     {
       "pattern": "weixin.lirtual.dpdns.org",
       "custom_domain": true
-    },
-    {
-      "pattern": "weixin-mcp.lirtual.dpdns.org",
-      "custom_domain": true
     }
   ],
   "d1_databases": [
