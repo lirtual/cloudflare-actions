@@ -17,4 +17,28 @@ This repository is **not** the production publisher yet. Do not deploy until the
 - The first RPC operation does not retry an ambiguous external result. Existing D1, encryption keys and URL host bindings are unchanged and **must not be recreated** during migration.
 - `pnpm run check` includes TypeScript, offline D1 tests, Wrangler dry-run and real workerd tests, including the Service Binding RPC. All fixtures are synthetic.
 
-**Release gate:** This repo has CI only. It has **no production release workflow or credentials** until the existing Weixin release permission is independently revoked and a single authorized main-only manual production path is established. Do not register or deploy the new Provider from CI, nor rename or remove the existing Worker, D1 or Access setup during code review.
+**Release gate (source staged in Draft PR, not production enabled):** The only
+publisher prepared here is `.github/workflows/release.yml`, manual
+`workflow_dispatch` on the current `main` with explicit production confirmation
+and the existing `weixin-mcp-worker` GitHub Environment. CI has no deploy step.
+Before obtaining production write access it requires all of the following:
+
+- The old repository's current reviewed release source contains no Weixin
+  publisher, and old queued/running/waiting release jobs are drained. It refuses
+  to deploy while the old repository still holds an enabled release path.
+- Existing Cloudflare Worker, D1 ID, host bindings and secret inventory agree
+  with the pre-cutover source; neither D1 nor Owner state is recreated.
+- The exact reviewed Source SHA is still the repository's current main.
+- Required new Environment Secrets are present, and the staged encryption key
+  actually decrypts the existing production Owner ciphertext in a **read-only**
+  D1 query. No decryption result, credential or ciphertext is logged.
+- Wrangler deploy stages both required Secrets atomically. Post-deploy readback
+  must match the reported Worker Version ID and expected D1, hosts and Secrets.
+
+**Separate release authorization is still necessary:** do not merge or run the
+new production release until the old publishing authority has been revoked,
+the new secrets and environment protection have been configured, a compatible
+rollback baseline has been defined, and a supervised cutover is approved.
+Readback, secrets inventory and CI alone do not prove full rollback safety.
+The original Worker, D1, Access administration and legacy MCP must remain
+operational until the new RPC has been verified.
