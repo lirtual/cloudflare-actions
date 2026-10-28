@@ -4,7 +4,7 @@ import {readFileSync} from "node:fs";
 import {fileURLToPath} from "node:url";
 import {Miniflare,convertV4MiniflareOptions} from "miniflare";
 const script=readFileSync(fileURLToPath(new URL("../.build/weixin/index.js",import.meta.url)),"utf8");
-const migration=readFileSync(new URL("../migrations/0001_owner.sql",import.meta.url),"utf8");
+const migration=['0001_owner.sql','0002_send_rejection_codes.sql'].map(m=>readFileSync(new URL('../migrations/'+m,import.meta.url),'utf8')).join('\n');
 const id="58e6bffd-258d-46b6-b1f3-a4148fe5d4e5";
 const version="33333333-3333-4333-8333-333333333333";
 const reviewedDigest="b378720974a0b76343359f621ac5da269099725ce6babd471ca33a4eb7919603";

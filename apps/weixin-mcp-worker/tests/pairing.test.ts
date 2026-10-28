@@ -14,7 +14,7 @@ const OTHER='access-sub-2';
 const ID='f43e7f17-c31d-42bf-8358-b454568c32b0';
 class D1{
   readonly sql=new DatabaseSync(':memory:');
-  constructor(){this.sql.exec(readFileSync(new URL('../migrations/0001_owner.sql',import.meta.url),'utf8'));}
+  constructor(){this.sql.exec(readFileSync(new URL('../migrations/0001_owner.sql',import.meta.url),'utf8'));this.sql.exec(readFileSync(new URL('../migrations/0002_send_rejection_codes.sql',import.meta.url),'utf8'));}
   prepare(query:string){
     const statement=this.sql.prepare(query);
     const wrapped=(args:unknown[])=>({

@@ -79,9 +79,11 @@ export async function syncCursorOnce(env:Env,poll:Poller):Promise<'updated'|'unc
     if(result.get_updates_buf===session.cursor && (!contextToken||contextToken===session.contextToken)){
       const now=Math.floor(Date.now()/1000);
       const checked=await env.DB.prepare(
-        'UPDATE weixin_binding SET last_sync_at=?,updated_at=? '+
+        'UPDATE weixin_binding SET last_sync_at=?,updated_at=?, '+
+        'last_verified_context_at=CASE WHEN ? THEN ? ELSE last_verified_context_at END '+
         'WHERE id=1 AND generation=? AND state=? AND lease_holder=? AND lease_until>? AND session_ciphertext=?'
-      ).bind(now,now,lease.generation,'ready',lease.owner,now,old.session_ciphertext).run();
+      ).bind(now,now,contextToken?1:0,now,lease.generation,
+        'ready',lease.owner,now,old.session_ciphertext).run();
       if(checked.meta.changes!==1)fail('binding_changed');
       return 'unchanged';
     }
@@ -92,7 +94,7 @@ export async function syncCursorOnce(env:Env,poll:Poller):Promise<'updated'|'unc
       'last_verified_context_at=CASE WHEN ? THEN ? ELSE last_verified_context_at END '+
       'WHERE id=1 AND generation=? AND state=? AND lease_holder=? AND lease_until>? AND session_ciphertext=?'
     ).bind(next.ciphertext,next.keyId,Math.floor(Date.now()/1000),Math.floor(Date.now()/1000),
-      Boolean(contextToken&&contextToken!==session.contextToken)?1:0,Math.floor(Date.now()/1000),
+      contextToken?1:0,Math.floor(Date.now()/1000),
       lease.generation,'ready',lease.owner,Math.floor(Date.now()/1000),old.session_ciphertext).run();
     if(saved.meta.changes!==1)fail('binding_changed');
     return 'updated';
