@@ -1,0 +1,84 @@
+name: Release Weixin Provider
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_to_production:
+        description: Explicitly approve production Weixin Provider release after old publisher is disabled
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deploy_to_production == true }}
+    runs-on: ubuntu-latest
+    environment: weixin-provider
+    concurrency:
+      group: weixin-provider-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate the current reviewed main before receiving credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" && "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]
+          [[ "$GITHUB_SHA" == "$(git rev-parse HEAD)" ]]
+          [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Verify complete Provider and RPC checks
+        run: pnpm run check
+
+      - name: Enforce legacy publisher retirement and drained releases (read-only)
+        run: node scripts/release-guard.mjs legacy
+
+      - name: Verify existing production Worker, D1, hosts and Secrets (read-only)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/release-guard.mjs preflight
+
+      # Existing production Worker Secrets are inherited from Cloudflare.
+      # Never stage replacement keys: their original values are unavailable.
+
+      - name: Publish reviewed Provider only after rechecking old and new main
+        id: publish
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
+          node scripts/release-guard.mjs legacy
+          log="$(mktemp)"
+          chmod 600 "$log"
+          trap 'rm -f "$log"' EXIT
+          if ! (cd apps/weixin-mcp-worker && pnpm exec wrangler deploy) >"$log" 2>&1; then
+            echo "Provider deploy failed; no automatic rollback or resend performed" >&2
+            exit 1
+          fi
+          version="$(node scripts/release-guard.mjs version "$log")"
+          echo "version_id=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify exact active Cloudflare Worker Version ID and bindings
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          EXPECTED_VERSION_ID: ${{ steps.publish.outputs.version_id }}
+        run: node scripts/release-guard.mjs readback
