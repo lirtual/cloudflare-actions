@@ -39,6 +39,27 @@ test("wrong binding, URL or input identity cannot dispatch",async()=>{
  assert.equal(sends,0);
 });
 
+test("Provider rejects non-root Quick Tunnel URLs without dispatch",async()=>{
+ const x=fixture();await x.ready();let sends=0;
+ const dispatch=async()=>{sends++;return "accepted" as const;};
+ const pin=await providerIdentity(x.env);
+ for(const session_url of [
+  "https://safe.trycloudflare.com/path",
+  "https://safe.trycloudflare.com/%2f",
+  "https://safe.trycloudflare.com/?t=1",
+  "https://safe.trycloudflare.com/#fragment",
+  "https://safe.trycloudflare.com//",
+  "https://nested.safe.trycloudflare.com/",
+  "https://safe.trycloudflare.com:443/",
+ ]) {
+  await assert.rejects(()=>sendTextAction(x.env,{
+   invocation_id:crypto.randomUUID(),binding_generation:1,session_url,...pin
+  },dispatch,async()=>{}),/invalid_trusted_url/,session_url);
+ }
+ assert.equal(sends,0);
+ assert.equal(x.sql.prepare("SELECT count(*) AS n FROM weixin_send_receipts").get()?.n,0);
+});
+
 test("generation changed during pre-send sync cannot reroute the invocation",async()=>{
  const x=fixture();await x.ready(1);let dispatches=0;
  const dispatch=async()=>{dispatches++;return "accepted" as const;};

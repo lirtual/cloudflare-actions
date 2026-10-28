@@ -45,10 +45,16 @@ function validateIdentity(id:string,generation:number){
 }
 /** Not a generic text relay. The only input is a constrained Session URL. */
 export function readyMessage(urlString:string):string{
- if(typeof urlString!=="string"||urlString.length>2048)invalid("invalid_trusted_url");
+ // Match Workflow's canonicalized single-label Quick Tunnel root contract.
+ if(typeof urlString!=="string"||urlString.length>180||
+    !/^https:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.trycloudflare\.com\/$/.test(urlString))
+   invalid("invalid_trusted_url");
  let url:URL;try{url=new URL(urlString);}catch{return invalid("invalid_trusted_url");}
+ // Match the reviewed Workflow contract: one canonical HTTPS Quick Tunnel root.
+ // Provider must reject paths even when invoked without the Workflow compiler.
  if(url.protocol!=="https:"||!url.hostname.endsWith(".trycloudflare.com")||
-    url.hostname==="trycloudflare.com"||url.username||url.password||url.port||url.hash||url.search||
+    url.hostname==="trycloudflare.com"||url.pathname!=="/"||
+    url.username||url.password||url.port||url.hash||url.search||
     url.href!==urlString)invalid("invalid_trusted_url");
  const body="OpenList Session Ready\n"+url.href;
  if(new TextEncoder().encode(body).byteLength>4096)invalid("invalid_text");
