@@ -290,3 +290,33 @@ test('safe send diagnostics classify timeout, malformed response and unrecognize
     assert.ok(logs.every(x => !/private-token|owner-secret|private-context|private-message|not-json|secret/.test(x)));
   } finally { console.warn=original; }
 });
+
+
+test('unrecognized HTTP-2xx ACK logs only bounded shape, keeps unknown and never replays', async () => {
+  const id='d6d361d3-39cf-45a2-b2f0-cccb4e0b61ba';
+  const input={botToken:'TOKEN_PRIVATE_392',recipientId:'OWNER_PRIVATE_392',
+    contextToken:'CONTEXT_PRIVATE_392',requestId:id,text:'TEXT_PRIVATE_392'};
+  const cases=[
+    [{}, {ret_kind:'absent',errcode_kind:'absent',errmsg_kind:'absent',has_message_id:false,has_other_fields:false}],
+    [{errcode:0}, {ret_kind:'absent',errcode_kind:'zero',errmsg_kind:'absent',has_message_id:false,has_other_fields:false}],
+    [{ret:'0',errmsg:'UPSTREAM_SECRET_392'}, {ret_kind:'string',errcode_kind:'absent',errmsg_kind:'nonempty',has_message_id:false,has_other_fields:false}],
+    [{ret:null,errcode:0,message_id:'MESSAGE_ID_PRIVATE_392',extra_private:'SENSITIVE_392'},
+     {ret_kind:'null',errcode_kind:'zero',errmsg_kind:'absent',has_message_id:true,has_other_fields:true}],
+    [{ret:0,errcode:null}, {ret_kind:'zero',errcode_kind:'null',errmsg_kind:'absent',has_message_id:false,has_other_fields:false}],
+  ];
+  const saved=console.warn, logs=[];
+  console.warn=value=>logs.push(value);
+  try {
+    for(const [response,expected] of cases){
+      let dispatches=0;
+      const api=createIlinkClient({fetchImpl:async()=>{dispatches++;return new Response(JSON.stringify(response),{status:200});}});
+      const start=logs.length;
+      await assert.rejects(()=>api.sendText(input),err=>err instanceof IlinkError && err.code==='UNKNOWN_SEND');
+      assert.equal(dispatches,1,'never replay unknown upstream business ACK');
+      assert.equal(logs.length,start+1);
+      assert.deepEqual(logs.at(-1),{event:'weixin_send_diagnostic',invocation_id:id,
+        phase:'upstream_ack_unrecognized',...expected});
+      assert.doesNotMatch(JSON.stringify(logs.at(-1)),/TOKEN_PRIVATE|OWNER_PRIVATE|CONTEXT_PRIVATE|TEXT_PRIVATE|UPSTREAM_SECRET|MESSAGE_ID_PRIVATE|SENSITIVE_392/);
+    }
+  }finally{console.warn=saved;}
+});
