@@ -1,0 +1,8 @@
+{
+ "$schema":"../../node_modules/wrangler/config-schema.json",
+ "name":"bark-provider","main":"src/index.ts","compatibility_date":"2026-10-27",
+ "workers_dev":false,"preview_urls":false,"keep_vars":false,
+ "version_metadata":{"binding":"CF_VERSION_METADATA"},
+ "observability":{"enabled":true,"logs":{"invocation_logs":false}},
+ "secrets":{"required":["BARK_DEVICE_KEY","BARK_ENCRYPTION_KEY"]}
+}
