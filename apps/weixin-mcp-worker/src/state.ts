@@ -22,6 +22,11 @@ function boundedCode(n:unknown):number|null{
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const encoder = new TextEncoder();
+// Classification only: no RPC or D1 schema changes, no sensitive content.
+function sendDiagnostic(requestId:string, phase:string):void {
+  try { console.warn({event:'weixin_send_diagnostic',invocation_id:requestId,phase}); }
+  catch { /* Logging must not affect the durable reservation. */ }
+}
 function reply(request_id:string,status:SendStatus,duplicate:boolean):SendReply {
   return {request_id,status,duplicate,next_action:status==='accepted'?'check_handset':
     status==='rejected'?'review_error':'check_handset_before_new_request'};
@@ -110,23 +115,36 @@ export async function sendOnce(env:Env,text:string,requestId:string,dispatch:Dis
   // Never decrypt credentials until the durable send reservation exists.
   // Recheck generation immediately before transport; management rebind MUST
   // also implement a cross-request fence before this becomes production-ready.
+  let phase:'pre_dispatch'|'dispatch'|'receipt_update'='pre_dispatch';
   try{
     const current=await readUnderLease(env,lease);
-    if(current.state!=='ready'||current.session_ciphertext!==binding.session_ciphertext)
+    if(current.state!=='ready'||current.session_ciphertext!==binding.session_ciphertext){
+      sendDiagnostic(requestId,'pre_dispatch_fence');
       return reply(requestId,'unknown',false);
+    }
     const session=await decrypt<IlinkSession>(env,'weixin:owner:binding:'+current.generation,
       current.session_ciphertext!,current.session_key_id!);
-    if(!session.botToken||!session.ownerId||!session.contextToken||!session.botId)
+    if(!session.botToken||!session.ownerId||!session.contextToken||!session.botId){
+      sendDiagnostic(requestId,'pre_dispatch_binding_invalid');
       return reply(requestId,'unknown',false);
+    }
     // The provider write timeout is 12s, safely inside the 120s DB lease.
     // Never dispatch with a lease already near expiration.
-    if(Date.now()+20000>=lease.expiresAt*1000)return reply(requestId,'unknown',false);
+    if(Date.now()+20000>=lease.expiresAt*1000){
+      sendDiagnostic(requestId,'pre_dispatch_lease_expiring');
+      return reply(requestId,'unknown',false);
+    }
+    phase='dispatch';
     const dispatched=await dispatch(session,text,requestId);
     const result=typeof dispatched==='string'?dispatched:dispatched.status;
     // Adapter ambiguity can never become a definite acknowledgement.
-    if(result!=='accepted'&&result!=='rejected'&&result!=='unknown')
+    if(result!=='accepted'&&result!=='rejected'&&result!=='unknown'){
+      sendDiagnostic(requestId,'dispatch_result_invalid');
       return reply(requestId,'unknown',false);
+    }
+    if(result==='unknown')sendDiagnostic(requestId,'dispatch_unknown');
     const rejected=typeof dispatched==='object'&&dispatched?.status==='rejected'?dispatched:null;
+    phase='receipt_update';
     // Store only bounded numbers from definitive business rejections.
     // No token, message, errmsg or unreviewed upstream payload is persisted.
     if(result!=='unknown'){
@@ -138,11 +156,16 @@ export async function sendOnce(env:Env,text:string,requestId:string,dispatch:Dis
         result==='rejected'?boundedCode(rejected?.upstream_ret):null,
         result==='rejected'?boundedCode(rejected?.upstream_errcode):null,
         binding.generation,requestId,binding.generation,lease.owner,Math.floor(Date.now()/1000)).run();
-      if(updated.meta.changes!==1)return reply(requestId,'unknown',false);
+      if(updated.meta.changes!==1){
+        sendDiagnostic(requestId,'receipt_update_unconfirmed');
+        return reply(requestId,'unknown',false);
+      }
     }
     return reply(requestId,result,false);
   }catch{
     // Once reserved, all unexpected errors are uncertain, never retry.
+    sendDiagnostic(requestId,phase==='receipt_update'?'receipt_update_exception':
+      phase==='dispatch'?'dispatch_exception':'pre_dispatch_exception');
     return reply(requestId,'unknown',false);
   }
   } finally {
