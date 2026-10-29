@@ -87,7 +87,7 @@ async function parseBounded(response) {
     // ACK envelope, retain a canonical decimal integer without precision loss.
     // Never log, expose, persist or use the numeric ID as a recipient locator.
     if (Object.keys(parsed).length === 1 && typeof parsed.message_id === 'number') {
-      const exact = /^\\s*\\{\\s*"message_id"\\s*:\\s*([1-9][0-9]{0,19})\\s*\\}\\s*$/.exec(raw);
+      const exact = /^\s*\{\s*"message_id"\s*:\s*([1-9][0-9]{0,19})\s*\}\s*$/.exec(raw);
       if (exact) parsed.message_id = exact[1];
     }
     return parsed;
