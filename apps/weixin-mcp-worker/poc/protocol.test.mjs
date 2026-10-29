@@ -266,3 +266,27 @@ test('sendText treats an absent or malformed business receipt as unknown, never 
     assert.equal(fake.calls.length, 1);
   }
 });
+
+
+test('safe send diagnostics classify timeout, malformed response and unrecognized acknowledgement', async () => {
+  const input = { botToken:'private-token',recipientId:'owner-secret',contextToken:'private-context',
+    requestId:'d6d361d3-39cf-45a2-b2f0-cccb4e0b61ba',text:'private-message' };
+  const original = console.warn;
+  const logs = [];
+  console.warn = (...args) => { logs.push(args.map(x=>JSON.stringify(x)).join(' ')); };
+  try {
+    const cases = [
+      [async () => { const e = new Error('secret'); e.name='TimeoutError'; throw e; }, 'upstream_timeout'],
+      [async () => new Response('{not-json',{status:200}), 'upstream_response_invalid'],
+      [async () => new Response(JSON.stringify({errcode:0}),{status:200}), 'upstream_ack_unrecognized'],
+    ];
+    for (const [fetchImpl, phase] of cases) {
+      const previous=logs.length;
+      await assert.rejects(() => createIlinkClient({fetchImpl}).sendText(input),
+        e => e instanceof IlinkError && e.code==='UNKNOWN_SEND');
+      assert.equal(logs.length,previous+1);
+      assert.ok(logs.at(-1).includes('"phase":"'+phase+'"'));
+    }
+    assert.ok(logs.every(x => !/private-token|owner-secret|private-context|private-message|not-json|secret/.test(x)));
+  } finally { console.warn=original; }
+});

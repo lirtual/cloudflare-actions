@@ -147,3 +147,31 @@ test('definite upstream rejection stores bounded codes, unknown stores none and 
  const row2=db.sql.prepare('SELECT status,upstream_ret,upstream_errcode FROM weixin_send_receipts WHERE request_id=?').get(second)!;
  assert.equal(row2.status,'unknown');assert.equal(row2.upstream_ret,null);assert.equal(row2.upstream_errcode,null);
 });
+
+
+test('unknown and receipt-write ambiguity emit only bounded invocation diagnostics and never resend',async()=>{
+  const {env,db,bindReady}=fixture();await bindReady();
+  const original=console.warn, logs:string[]=[];
+  console.warn=(...args:unknown[])=>{logs.push(args.map(x=>JSON.stringify(x)).join(' '));};
+  try {
+    let sends=0;
+    const originalPrepare=env.DB.prepare.bind(env.DB);
+    const wrappedEnv={...env,DB:{prepare(query:string){
+      const stmt=originalPrepare(query);
+      if(query.startsWith('UPDATE weixin_send_receipts SET status=')){
+        return {bind:(...args:unknown[])=>({run:async()=>{
+          throw Error('synthetic receipt write failure - sensitive');
+        }})};
+      }
+      return stmt;
+    }}} as unknown as Env;
+    const first=await sendOnce(wrappedEnv,'private-text',id,async()=>{sends++;return 'accepted';});
+    assert.equal(first.status,'unknown');
+    assert.equal(db.sql.prepare('SELECT status FROM weixin_send_receipts WHERE request_id=?').get(id)?.status,'unknown');
+    assert.equal((await sendOnce(wrappedEnv,'private-text',id,async()=>{sends++;return 'accepted';})).duplicate,true);
+    assert.equal(sends,1);
+    assert.equal(logs.length,1);
+    assert.ok(logs[0].includes('"phase":"receipt_update_exception"'));
+    assert.ok(!logs[0].includes('sensitive')&&!logs[0].includes('private-text'));
+  }finally{console.warn=original;}
+});
