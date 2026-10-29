@@ -49,3 +49,65 @@ test('accepted, rejected, uncertain; no retries or redirects',async()=>{
  assert.equal(count,5);
  assert.equal((await sendNotification(env,{...input,input_digest:'f'.repeat(64)},async()=>{throw Error('unexpected_send')})).status,'rejected');
 });
+
+test('oversized content, unsafe HTTPS and sensitive update IDs fail closed',()=>{
+ const invalid=[
+  {body:'x'.repeat(2401)},
+  {body:'ok',title:'x'.repeat(151)},
+  {body:'ok',url:'https://user:pass@example.com'},
+  {body:'ok',icon:'https://example.com:8443/icon.png'},
+  {body:'ok',image:'https://example.com/img#fragment'},
+  {body:'ok',id:'private@example.com'},
+  {body:'ok',badge:0},
+  {body:'ok',level:'critical',volume:11},
+  {body:'ok',unexpected:'skip-schema'},
+ ];
+ for(const notification of invalid)
+  assert.throws(()=>validateNotification(notification),JSON.stringify(notification).slice(0,100));
+ assert.equal(validateNotification({body:'valid',id:'public-update_1'}).id,'public-update_1');
+});
+test('invalid invocation or mismatched provider identity never reaches the upstream',async()=>{
+ const contract=await getContract(env);
+ const notification={body:'hello'};
+ const base={invocation_id:'c4fb8b5e-0202-42fd-9df9-ff06e9f7ab6c',
+  ...contract,input_digest:await digest(notification),notification};
+ let sends=0;
+ const mock=async()=>{sends++;return new Response('{"code":200}',{status:200});};
+ for(const input of [
+  {...base,invocation_id:'not-a-uuid'},
+  {...base,deployment_id:'00000000-0000-4000-8000-000000000000'},
+  {...base,contract_digest:'f'.repeat(64)},
+  {...base,input_digest:'f'.repeat(64)},
+  {...base,notification:{body:'changed'}},
+ ]){
+  const result=await sendNotification(env,input,mock);
+  assert.equal(result.status,'rejected');
+ }
+ assert.equal(sends,0);
+});
+test('ambiguous upstream acknowledgements and transport errors are unknown, with no retry',async()=>{
+ const contract=await getContract(env);
+ const notification={body:'only once'};
+ const input={invocation_id:'c4fb8b5e-0202-42fd-9df9-ff06e9f7ab6c',
+  ...contract,input_digest:await digest(notification),notification};
+ const ambiguous=[
+  new Response('{"code":"200"}',{status:200}),
+  new Response('{"code":500}',{status:200}),
+  new Response('{}',{status:200}),
+  new Response('x'.repeat(2050),{status:200}),
+  new Response('',{status:503}),
+  new Response('',{status:307,headers:{location:'https://untrusted.example/'}}),
+ ];
+ let sends=0;
+ for(const response of ambiguous){
+  const result=await sendNotification(env,input,async()=>{
+   sends++;return response;
+  });
+  assert.equal(result.status,'unknown');
+ }
+ const error=await sendNotification(env,input,async()=>{
+  sends++;throw Error('connection reset after request');
+ });
+ assert.equal(error.status,'unknown');
+ assert.equal(sends,ambiguous.length+1);
+});

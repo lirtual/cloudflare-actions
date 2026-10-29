@@ -64,5 +64,4 @@ Local crypto/vector, field constraints, response classification, reviewed RPC,
 Workflow D1 at-most-once semantics and Weixin regression tests are automatable.
 Real Cloudflare deployment, proof of phone delivery/decryption, Device Key
 rotation and advanced iOS notification behaviors require independent
-production authorization. The Issue #16 Q25 post-decryption-failure recovery
-choice remains **unapproved**. No automatic cipher fallback is implemented.
+production authorization. Issue #16 Q25=A was approved on 2026-10-29: if the handset cannot decrypt, stop related sends and fix AES-256-GCM compatibility. Never fall back to CBC/plaintext or automatically resend an uncertain result. The one-shot encrypted iPhone notification was observed and readable by the Owner; advanced iOS behaviors, key revocation and live failure injection remain **Not performed**. No automatic cipher fallback is implemented.
