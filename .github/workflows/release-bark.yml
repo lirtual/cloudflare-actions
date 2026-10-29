@@ -66,7 +66,10 @@ jobs:
           secret_json="$(mktemp)"
           chmod 600 "$log" "$secret_json"
           trap 'rm -f "$log" "$secret_json"' EXIT
-          if ! (cd apps/bark-provider && pnpm exec wrangler deploy) >"$log" 2>&1; then
+          # Wrangler validates required Secrets during deploy; upload both atomically
+          # with code, avoiding a first-deploy missing-Secrets failure.
+          node scripts/bark-release-guard.mjs secrets "$secret_json"
+          if ! (cd apps/bark-provider && pnpm exec wrangler deploy --secrets-file "$secret_json") >"$log" 2>&1; then
             # Never emit Wrangler logs: error text may contain configuration values.
             # Report only a fixed diagnostic category for safe, actionable remediation.
             if grep -Eqi "permission|unauthori[sz]ed|forbidden|authentication|10000|10001|403" "$log"; then
@@ -78,13 +81,6 @@ jobs:
             else
               echo "Bark Worker deploy failed (unclassified); no notification sent" >&2
             fi
-            exit 1
-          fi
-          # One controlled Worker Secret operation follows first code deploy.
-          # It can create a new Worker version. The readback gates the actual active ID.
-          node scripts/bark-release-guard.mjs secrets "$secret_json"
-          if ! (cd apps/bark-provider && pnpm exec wrangler secret bulk "$secret_json" --name bark-provider) >"$log" 2>&1; then
-            echo "Bark Worker secret application failed; inspect active version before any retry" >&2
             exit 1
           fi
       - name: Independently verify active Bark Version and exact Secrets
