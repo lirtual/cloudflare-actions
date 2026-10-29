@@ -6,6 +6,14 @@ const MAX_TEXT_BYTES = 4096;
 const encoder = new TextEncoder();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// Diagnostics are strictly limited to predefined phases and a random invocation ID.
+// No message body, recipient, token, raw HTTP response or exception is logged.
+function sendDiagnostic(id, phase) {
+  if (!UUID.test(id ?? '')) return;
+  try { console.warn({ event: 'weixin_send_diagnostic', invocation_id: id, phase }); }
+  catch { /* Logging must not affect send semantics. */ }
+}
+
 export class IlinkError extends Error {
   constructor(code, diagnostic = null) {
     super(code);
@@ -81,7 +89,7 @@ const baseInfo = Object.freeze({ channel_version: '2.4.8', bot_agent: 'WeixinMCP
 
 export function createIlinkClient({ fetchImpl = fetch, apiOrigin = API_ORIGIN } = {}) {
   const origin = validateOrigin(apiOrigin);
-  async function request(method, path, { token, body, query, send = false } = {}) {
+  async function request(method, path, { token, body, query, send = false, diagnosticId } = {}) {
     const url = new URL(path, origin);
     if (query) for (const [key, val] of Object.entries(query)) url.searchParams.set(key, val);
     if (url.origin !== origin) throw new IlinkError('UNSAFE_REDIRECT');
@@ -103,14 +111,24 @@ export function createIlinkClient({ fetchImpl = fetch, apiOrigin = API_ORIGIN } 
         signal: AbortSignal.timeout(send ? 12000 : 40000),
         ...(body !== undefined ? { body: JSON.stringify(body) } : {})
       });
-    } catch {
+    } catch (err) {
+      if (send) sendDiagnostic(diagnosticId,
+        err?.name === 'TimeoutError' || err?.name === 'AbortError'
+          ? 'upstream_timeout' : 'upstream_transport_unconfirmed');
       throw new IlinkError(send ? 'UNKNOWN_SEND' : 'UPSTREAM_UNAVAILABLE');
     }
     try {
       return await parseBounded(response);
     } catch (err) {
-      // Even a redirect can follow an already-processed write: no retry.
-      if (send) throw new IlinkError('UNKNOWN_SEND');
+      // A processed write may have produced an unusable response: never retry.
+      if (send) {
+        sendDiagnostic(diagnosticId,
+          err instanceof IlinkError && err.code === 'UNSAFE_REDIRECT'
+            ? 'upstream_redirect_unconfirmed'
+            : err instanceof IlinkError && err.code === 'UPSTREAM_HTTP_FAILURE'
+              ? 'upstream_http_unconfirmed' : 'upstream_response_invalid');
+        throw new IlinkError('UNKNOWN_SEND');
+      }
       if (err instanceof IlinkError) throw err;
       throw new IlinkError('UPSTREAM_UNAVAILABLE');
     }
@@ -187,7 +205,7 @@ export function createIlinkClient({ fetchImpl = fetch, apiOrigin = API_ORIGIN } 
         throw new IlinkError('INVALID_INPUT');
       }
       const response = await request('POST', '/ilink/bot/sendmessage', {
-        token: botToken, send: true,
+        token: botToken, send: true, diagnosticId: requestId,
         body: {
           msg: { from_user_id: '', to_user_id: recipientId, client_id: requestId,
             message_type: 2, message_state: 2, context_token: contextToken,
@@ -206,6 +224,7 @@ export function createIlinkClient({ fetchImpl = fetch, apiOrigin = API_ORIGIN } 
           (Number.isSafeInteger(response.errcode) && response.errcode !== 0)) {
         validateRet(response);
       }
+      sendDiagnostic(requestId, 'upstream_ack_unrecognized');
       throw new IlinkError('UNKNOWN_SEND'); // no definite acknowledgement or rejection.
     }
   };
