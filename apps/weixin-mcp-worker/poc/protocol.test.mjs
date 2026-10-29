@@ -320,3 +320,67 @@ test('unrecognized HTTP-2xx ACK logs only bounded shape, keeps unknown and never
     }
   }finally{console.warn=saved;}
 });
+
+
+test('uint64 message_id-only HTTP ACK is API accepted without JS number precision loss', async () => {
+  const input={botToken:'TOKEN_PRIVATE_392',recipientId:'OWNER_PRIVATE_392',
+    contextToken:'CTX_PRIVATE_392',requestId:'d6d361d3-39cf-45a2-b2f0-cccb4e0b61ba',
+    text:'TEXT_PRIVATE_392'};
+  const replies=[
+    '{"message_id":7495842118583015944}',
+    '{"message_id":"7495842118583015944"}',
+    '{"message_id":1}',
+    '{"message_id":"18446744073709551615"}',
+    '{"message_id":18446744073709551615}',
+    ' { "message_id" : 7495842118583015944 } ',
+  ];
+  const saved=console.warn, logs=[];
+  console.warn=value=>logs.push(value);
+  try {
+    for(const raw of replies){
+      let sends=0;
+      const client=createIlinkClient({fetchImpl:async(_url,options)=>{
+        sends++;assert.equal(options.redirect,'manual');
+        return new Response(raw,{status:200});
+      }});
+      assert.deepEqual(await client.sendText(input),{status:'accepted'},
+        'server message_id is an API acceptance, not proof of handset delivery');
+      assert.equal(sends,1,'only one POST');
+    }
+    assert.equal(logs.length,0,'no server message ID or private payload logged on acceptance');
+  } finally {console.warn=saved;}
+});
+
+test('message_id ACK must be a canonical positive uint64 and sole response field',async()=>{
+  const input={botToken:'TOKEN_PRIVATE_392',recipientId:'OWNER_PRIVATE_392',
+    contextToken:'CTX_PRIVATE_392',requestId:'d6d361d3-39cf-45a2-b2f0-cccb4e0b61ba',
+    text:'TEXT_PRIVATE_392'};
+  const bad=[
+    '{}','{"message_id":0}','{"message_id":-1}','{"message_id":1.5}',
+    '{"message_id":1e2}','{"message_id":"0"}','{"message_id":"01"}',
+    '{"message_id":"bad"}','{"message_id":null}','{"message_id":true}',
+    '{"message_id":18446744073709551616}','{"message_id":"18446744073709551616"}',
+    '{"message_id":111111111111111111111}',
+    '{"message_id":7,"errcode":0}','{"message_id":"7","ret":null}',
+    '{"message_id":7,"extra":"SENSITIVE_PRIVATE_392"}',
+    '{"ret":"0","message_id":7}', '{"errcode":0}', '{"ret":null}',
+  ];
+  const saved=console.warn,logs=[];
+  console.warn=value=>logs.push(value);
+  try {
+    for(const raw of bad){
+      let sends=0;
+      await assert.rejects(
+        ()=>createIlinkClient({fetchImpl:async()=>{
+          sends++;return new Response(raw,{status:200});
+        }}).sendText(input),
+        err=>err instanceof IlinkError&&err.code==='UNKNOWN_SEND',
+        'malformed / conflicting ACK must remain unknown: '+raw.replace(/SENSITIVE_PRIVATE_392/g,'[redacted]')
+      );
+      assert.equal(sends,1);
+    }
+    assert.equal(logs.length,bad.length);
+    assert.ok(logs.every(log=>log.phase==='upstream_ack_unrecognized'));
+    assert.doesNotMatch(JSON.stringify(logs),/TOKEN_PRIVATE|OWNER_PRIVATE|CTX_PRIVATE|TEXT_PRIVATE|SENSITIVE_PRIVATE/);
+  }finally{console.warn=saved;}
+});

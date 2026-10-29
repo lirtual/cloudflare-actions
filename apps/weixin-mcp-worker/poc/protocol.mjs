@@ -79,8 +79,17 @@ async function parseBounded(response) {
   let offset = 0;
   for (const part of chunks) { bytes.set(part, offset); offset += part.byteLength; }
   try {
-    const parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    const raw = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('nonobject');
+    // Tencent's SendMessageResp.message_id is uint64 on the wire. Its official
+    // client parses this losslessly as a string. Only for the *entire* one-field
+    // ACK envelope, retain a canonical decimal integer without precision loss.
+    // Never log, expose, persist or use the numeric ID as a recipient locator.
+    if (Object.keys(parsed).length === 1 && typeof parsed.message_id === 'number') {
+      const exact = /^\s*\{\s*"message_id"\s*:\s*([1-9][0-9]{0,19})\s*\}\s*$/.exec(raw);
+      if (exact) parsed.message_id = exact[1];
+    }
     return parsed;
   } catch { throw new IlinkError('INVALID_RESPONSE'); }
 }
@@ -245,6 +254,18 @@ export function createIlinkClient({ fetchImpl = fetch, apiOrigin = API_ORIGIN } 
       if ((Number.isSafeInteger(response.ret) && response.ret !== 0) ||
           (Number.isSafeInteger(response.errcode) && response.errcode !== 0)) {
         validateRet(response);
+      }
+      // Production proof 2026-10-29: one successful phone-delivered send
+      // returned *only* message_id with no ret/errcode/errmsg. Tencent's
+      // official SendMessageResp defines uint64 message_id as a server-issued
+      // ACK (often JSON numeric on the wire). Accept API acknowledgement only
+      // for that exact envelope and a canonical nonzero uint64. It is NOT
+      // proof of handset delivery; other ambiguous responses remain unknown.
+      if (Object.keys(response).length === 1 &&
+          typeof response.message_id === 'string' &&
+          /^[1-9][0-9]{0,19}$/.test(response.message_id) &&
+          BigInt(response.message_id) <= 18446744073709551615n) {
+        return { status: 'accepted' };
       }
       sendDiagnostic(requestId, 'upstream_ack_unrecognized', safeAckShape(response));
       throw new IlinkError('UNKNOWN_SEND'); // no definite acknowledgement or rejection.
