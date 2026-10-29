@@ -1,0 +1,55 @@
+name: Hand off reviewed Weixin Provider Version
+on:
+  workflow_run:
+    workflows: ["Release Weixin Provider"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: "Existing successful Release Weixin Provider run ID (recovery without redeploy)"
+        required: true
+        type: string
+
+# This workflow does not deploy or change either Cloudflare Worker.
+# A cross-repo token is scoped only to repository_dispatch of mcp-workers.
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  handoff:
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.event == 'workflow_dispatch' &&
+           github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    environment: weixin-provider
+    concurrency:
+      group: weixin-provider-version-handoff
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify release provenance and read exact active Provider version
+        id: proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROVIDER_RELEASE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.release_run_id }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/verify-reviewed-provider-handoff.mjs
+      - name: Dispatch to independently protected consumer
+        env:
+          WEIXIN_WORKFLOW_DISPATCH_TOKEN: ${{ secrets.WEIXIN_WORKFLOW_DISPATCH_TOKEN }}
+          PROVIDER_RELEASE_RUN_ID: ${{ steps.proof.outputs.release_run_id }}
+          PROVIDER_RELEASE_SHA: ${{ steps.proof.outputs.release_sha }}
+          PROVIDER_ACTIVE_VERSION: ${{ steps.proof.outputs.provider_version_id }}
+        run: node scripts/dispatch-reviewed-weixin-handoff.mjs
