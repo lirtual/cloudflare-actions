@@ -36,5 +36,7 @@ test('Bark release is manual main-only, restricted to its environment and no pub
  assert.match(yaml,/environment: bark-provider/);
  for(const name of ['BARK_DEVICE_KEY','BARK_ENCRYPTION_KEY'])
   assert.match(yaml,new RegExp('secrets\\.'+name));
+ assert.match(yaml,/wrangler deploy --secrets-file/);
+ assert.doesNotMatch(yaml,/wrangler secret bulk/);
  assert.doesNotMatch(yaml,/weixin-mcp-worker/);
 });
