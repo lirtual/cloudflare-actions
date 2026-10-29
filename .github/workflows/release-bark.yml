@@ -67,7 +67,17 @@ jobs:
           chmod 600 "$log" "$secret_json"
           trap 'rm -f "$log" "$secret_json"' EXIT
           if ! (cd apps/bark-provider && pnpm exec wrangler deploy) >"$log" 2>&1; then
-            echo "Bark Worker code deploy failed; no automatic rollback, no test notification" >&2
+            # Never emit Wrangler logs: error text may contain configuration values.
+            # Report only a fixed diagnostic category for safe, actionable remediation.
+            if grep -Eqi "permission|unauthori[sz]ed|forbidden|authentication|10000|10001|403" "$log"; then
+              echo "Bark deploy failed: Cloudflare token authorization/scope; no notification sent" >&2
+            elif grep -Eqi "required secret|secret.*missing|missing.*secret|secret.*required" "$log"; then
+              echo "Bark deploy failed: secrets provisioning/order; no notification sent" >&2
+            elif grep -Eqi "worker.*limit|script.*limit|quota" "$log"; then
+              echo "Bark deploy failed: Worker quota; no notification sent" >&2
+            else
+              echo "Bark Worker deploy failed (unclassified); no notification sent" >&2
+            fi
             exit 1
           fi
           # One controlled Worker Secret operation follows first code deploy.
