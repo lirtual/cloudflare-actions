@@ -1,0 +1,6 @@
+{"name":"bark-provider","version":"0.1.0","private":true,"type":"module",
+"scripts":{"typecheck":"tsc --noEmit","test":"node --experimental-strip-types --test tests/*.test.ts",
+"deploy:dry-run":"wrangler deploy --dry-run --outdir .build/bark",
+"check":"pnpm run typecheck && pnpm test && pnpm run deploy:dry-run && node --test tests/*workerd.test.mjs"},
+"devDependencies":{"@cloudflare/workers-types":"5.20261006.1","@types/node":"24.19.2",
+"miniflare":"5.20260908.0-alpha","typescript":"6.0.3","wrangler":"4.148.0"}}

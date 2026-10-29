@@ -1,0 +1,84 @@
+name: Release Bark Provider
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_to_production:
+        description: Explicitly approve an independently reviewed Bark production release
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deploy_to_production == true }}
+    runs-on: ubuntu-latest
+    environment: bark-provider
+    concurrency:
+      group: bark-provider-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify exact current reviewed main before receiving credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$(git rev-parse HEAD)" ]]
+          [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Verify both Provider contracts, encryption tests and dry-run
+        run: pnpm run check
+      - name: Check Bark release isolation
+        run: node scripts/bark-release-guard.mjs source
+      - name: Verify Bark production Worker configuration before publishing
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/bark-release-guard.mjs preflight
+      - name: Release only the reviewed Bark Provider and inject private Secrets
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          BARK_DEVICE_KEY: ${{ secrets.BARK_DEVICE_KEY }}
+          BARK_ENCRYPTION_KEY: ${{ secrets.BARK_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
+          [[ "${#BARK_DEVICE_KEY}" -ge 12 && "${#BARK_ENCRYPTION_KEY}" -eq 32 ]] ||
+            { echo "Bark credentials missing or malformed" >&2; exit 1; }
+          node scripts/bark-release-guard.mjs preflight
+          log="$(mktemp)"
+          secret_json="$(mktemp)"
+          chmod 600 "$log" "$secret_json"
+          trap 'rm -f "$log" "$secret_json"' EXIT
+          if ! (cd apps/bark-provider && pnpm exec wrangler deploy) >"$log" 2>&1; then
+            echo "Bark Worker code deploy failed; no automatic rollback, no test notification" >&2
+            exit 1
+          fi
+          # One controlled Worker Secret operation follows first code deploy.
+          # It can create a new Worker version. The readback gates the actual active ID.
+          node scripts/bark-release-guard.mjs secrets "$secret_json"
+          if ! (cd apps/bark-provider && pnpm exec wrangler secret bulk "$secret_json" --name bark-provider) >"$log" 2>&1; then
+            echo "Bark Worker secret application failed; inspect active version before any retry" >&2
+            exit 1
+          fi
+      - name: Independently verify active Bark Version and exact Secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/bark-release-guard.mjs readback

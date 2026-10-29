@@ -77,3 +77,7 @@ is never retried or changed.
 This replaces the unactivated cross-repository handoff from PR #12.
 No production Worker, D1, Secret, Owner identity or Weixin message is
 modified by the source-only cleanup.
+
+## Bark encrypted notifications
+
+The private, one-device Bark Action Provider is specified in [apps/bark-provider/README.md](apps/bark-provider/README.md). It has an independent reviewed GitHub Actions manual release and does not change the Weixin Worker.
