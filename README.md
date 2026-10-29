@@ -62,40 +62,18 @@ Provider does **not** roll back D1, replay messages, replace Owner identity
 or resolve historical `unknown` receipts. Do not deploy the old pre-retirement
 versions that could restore removed MCP credentials.
 
+## Downstream Workflow version pin
 
-## Reviewed automatic version handoff (post-release, no new publisher)
+The `weixin-mcp-worker` remains an **independently reviewed and manually
+released** Cloudflare Action Provider. To consume a newly released version,
+the protected `lirtual/mcp-workers` **Release Worker** workflow reads and
+pins the current active Provider Version directly from Cloudflare using its
+existing read credential. No cross-repository dispatch credentials or
+automatic unattended Worker cutover are needed. The consumer's existing
+main-only release, environment approval, historical Run and physical
+Session gates remain authoritative. An old `unknown` Weixin invocation
+is never retried or changed.
 
-`.github/workflows/weixin-version-handoff.yml` is a **notification-only**
-workflow triggered by a successful `Release Weixin Provider` workflow_run
-or manually with a successful `release_run_id` for a missed handoff.
-It does **not** deploy either Worker, mutate D1, send Weixin messages,
-or update the consuming repository by itself.
-
-The handoff runs inside the existing protected `weixin-provider` Environment.
-It independently verifies the latest successful manual Provider release,
-its main-branch code ancestry, and the live 100%-deployed Cloudflare
-Provider Version and existing D1/Secret guards. It then emits exactly one
-`reviewed_weixin_provider_release` repository_dispatch to
-`lirtual/mcp-workers`, carrying only release run ID, commit SHA and exact
-Provider Version ID. An ambiguous dispatch result is **not retried**.
-
-**One-time prerequisite** (set in the GitHub `weixin-provider` Environment):
-`WEIXIN_WORKFLOW_DISPATCH_TOKEN`, a dedicated fine-grained token or
-GitHub App token limited to `lirtual/mcp-workers` repository
-**Contents: write** for repository_dispatch. Do not use a personal
-all-repositories token or display it in logs. Existing
-`CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` are only used for
-read-only preflight. GitHub's native `GITHUB_TOKEN` authenticates
-same-repository release provenance. No new public endpoint is created.
-
-The receiving Workflow repository has its **own** approval gate and
-separately scoped credentials; see its `docs/weixin-provider-version-sync.md`.
-A successful dispatch does not prove the consumer release succeeded.
-If credentials or provider proof are missing, the handoff fails closed
-and the already completed Provider release is **not** rolled back.
-
-For the already-completed 2026-10-29 Provider release, manually dispatch
-`Hand off reviewed Weixin Provider Version` with
-`release_run_id=40796327454` **after** both sides have the required
-GitHub Environment Secrets and approvals configured. This reuses the
-existing active version; it does not publish another one.
+This replaces the unactivated cross-repository handoff from PR #12.
+No production Worker, D1, Secret, Owner identity or Weixin message is
+modified by the source-only cleanup.
