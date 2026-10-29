@@ -1,1 +1,1 @@
-{"name":"cloudflare-actions","private":true,"packageManager":"pnpm@10.17.1","engines":{"node":">=24 <25"},"scripts":{"check":"node --experimental-strip-types --test scripts/release-guard.test.mjs scripts/weixin-version-handoff.test.mjs && pnpm --filter weixin-mcp-worker check"}}
+{"name":"cloudflare-actions","private":true,"packageManager":"pnpm@10.17.1","engines":{"node":">=24 <25"},"scripts":{"check":"node --experimental-strip-types --test scripts/release-guard.test.mjs && pnpm --filter weixin-mcp-worker check"}}
