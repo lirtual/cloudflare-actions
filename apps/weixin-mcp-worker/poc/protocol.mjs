@@ -8,10 +8,32 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 
 // Diagnostics are strictly limited to predefined phases and a random invocation ID.
 // No message body, recipient, token, raw HTTP response or exception is logged.
-function sendDiagnostic(id, phase) {
+function sendDiagnostic(id, phase, details = undefined) {
   if (!UUID.test(id ?? '')) return;
-  try { console.warn({ event: 'weixin_send_diagnostic', invocation_id: id, phase }); }
-  catch { /* Logging must not affect send semantics. */ }
+  try {
+    // details are fixed local enums/booleans, never response text or arbitrary keys.
+    console.warn({ event: 'weixin_send_diagnostic', invocation_id: id, phase,
+      ...(details ?? {}) });
+  } catch { /* Logging must not affect send semantics. */ }
+}
+// A successful HTTP response may not carry a recognized business ACK.
+// Capture only safe field *shapes*, never raw upstream fields, message content,
+// recipient, token, errmsg or the response body. Do not relabel as accepted.
+function safeAckShape(payload) {
+  const kind = value => value === undefined ? 'absent' :
+    value === null ? 'null' :
+    value === 0 ? 'zero' :
+    typeof value === 'number' ? 'number' :
+    typeof value === 'string' ? 'string' :
+    typeof value === 'boolean' ? 'boolean' : 'complex';
+  const errmsg_kind = payload.errmsg === undefined ? 'absent' :
+    payload.errmsg === null ? 'null' :
+    typeof payload.errmsg !== 'string' ? 'nonstring' :
+    payload.errmsg.length === 0 ? 'empty' : 'nonempty';
+  return { ret_kind: kind(payload.ret), errcode_kind: kind(payload.errcode),
+    errmsg_kind, has_message_id: Object.hasOwn(payload,'message_id'),
+    has_other_fields: Object.keys(payload).some(key =>
+      !['ret','errcode','errmsg','message_id'].includes(key)) };
 }
 
 export class IlinkError extends Error {
@@ -224,7 +246,7 @@ export function createIlinkClient({ fetchImpl = fetch, apiOrigin = API_ORIGIN } 
           (Number.isSafeInteger(response.errcode) && response.errcode !== 0)) {
         validateRet(response);
       }
-      sendDiagnostic(requestId, 'upstream_ack_unrecognized');
+      sendDiagnostic(requestId, 'upstream_ack_unrecognized', safeAckShape(response));
       throw new IlinkError('UNKNOWN_SEND'); // no definite acknowledgement or rejection.
     }
   };
