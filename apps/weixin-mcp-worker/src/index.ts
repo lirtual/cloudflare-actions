@@ -1,9 +1,11 @@
 import {WorkerEntrypoint} from 'cloudflare:workers';
 import ownerHttp from './http.ts';
 import type {Env} from './types.ts';
-import {sendTextAction,readActionReceipt,bindingIdentity,type TextInvocation,type ReceiptQuery,providerIdentity} from './provider.ts';
+import {sendTextAction,readActionReceipt,bindingIdentity,type TextInvocation,type ReceiptQuery,providerIdentity,sendDownloadCompleteAction,type DownloadInvocation} from './provider.ts';
 export default class WeixinActionProvider extends WorkerEntrypoint<Env>{
   async sendText(input:TextInvocation){return sendTextAction(this.env,input);}
+  async sendDownloadComplete(input:DownloadInvocation){return sendDownloadCompleteAction(this.env,input);}
+  async getDownloadContract(){return providerIdentity(this.env,'download');}
   async getReceipt(query:ReceiptQuery){return readActionReceipt(this.env,query);}
   async getBinding(){return bindingIdentity(this.env);}
   async getContract(){return providerIdentity(this.env);}
