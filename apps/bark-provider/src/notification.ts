@@ -30,9 +30,9 @@ export async function digest(v:unknown){
  const hash=await crypto.subtle.digest('SHA-256',encoder.encode(JSON.stringify(canonical(v))));
  return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
-export async function getContract(env:Env){
+export async function getContract(env:Env,manifest:unknown=ACTION_MANIFEST){
  if(!uuid.test(env.CF_VERSION_METADATA?.id??''))throw new BarkError('deployment_not_configured');
- return {deployment_id:env.CF_VERSION_METADATA!.id,contract_digest:await digest(ACTION_MANIFEST)};
+ return {deployment_id:env.CF_VERSION_METADATA!.id,contract_digest:await digest(manifest)};
 }
 const strings:Record<string,number>={body:2400,title:150,subtitle:150,markdown:2400,
  group:100,sound:100,copy:500,icon:512,image:512,url:512,id:64,level:20,action:20};
@@ -101,12 +101,13 @@ export async function encryptedRequest(env:Env,input:Record<string,unknown>){
  if(bytes(body)>4000)throw new BarkError('encrypted_request_too_large');
  return body;
 }
-export async function sendNotification(env:Env,input:Invocation,dispatch:typeof fetch=fetch){
+export async function sendNotification(env:Env,input:Invocation,dispatch:typeof fetch=fetch,
+ manifest:unknown=ACTION_MANIFEST){
  let body:string;
  try{
   if(!uuid.test(input?.invocation_id??'')||!hex64.test(input?.input_digest??''))
    throw new BarkError('invalid_invocation');
-  const contract=await getContract(env);
+  const contract=await getContract(env,manifest);
   if(input.deployment_id!==contract.deployment_id||input.contract_digest!==contract.contract_digest)
    throw new BarkError('contract_mismatch');
   const notification=validateNotification(input.notification);

@@ -23,12 +23,12 @@ function canonical(value:unknown):unknown{
   Object.entries(value).sort(([a],[b])=>a.localeCompare(b,'en')).map(([k,v])=>[k,canonical(v)]));
  return value;
 }
-export async function providerIdentity(env:Env){
+export async function providerIdentity(env:Env,manifest:unknown=ACTION_MANIFEST){
  const deployment_id=env.CF_VERSION_METADATA?.id;
  if(typeof deployment_id!=='string'||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deployment_id))
   invalid('provider_deployment_unavailable');
- const bytes=new TextEncoder().encode(JSON.stringify(canonical(ACTION_MANIFEST)));
+ const bytes=new TextEncoder().encode(JSON.stringify(canonical(manifest)));
  const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
  const contract_digest=Array.from(hash,b=>b.toString(16).padStart(2,'0')).join('');
  return {deployment_id,contract_digest};
@@ -107,9 +107,10 @@ async function upstreamSend(session:IlinkSession,body:string,requestId:string):P
 /** Send through the existing durable D1 reservation. Never auto-retry unknown. */
 export async function sendTextAction(env:Env,input:TextInvocation,dispatch:Dispatcher=upstreamSend,
   synchronize:()=>Promise<void>=()=>syncCursorOnce(env,session=>
-    createIlinkClient().getUpdates(session.botToken,session.cursor)).then(()=>{})){
+    createIlinkClient().getUpdates(session.botToken,session.cursor)).then(()=>{}),
+  manifest:unknown=ACTION_MANIFEST){
  validateIdentity(input?.invocation_id,input?.binding_generation);
- const identity=await providerIdentity(env);
+ const identity=await providerIdentity(env,manifest);
  if(input.deployment_id!==identity.deployment_id)invalid('deployment_identity_mismatch');
  if(input.contract_digest!==identity.contract_digest)invalid('contract_identity_mismatch');
  const body=readyMessage(input.session_url),input_digest=await sha256(body);
