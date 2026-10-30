@@ -26,7 +26,7 @@ function fixture(caller){
     return Response.json({code:200});
    }},
   {name:'caller',modules:true,compatibilityDate:'2026-09-15',
-   serviceBindings:{ACTIONS:'cloudflare-actions'},script:caller},
+   serviceBindings:{ACTIONS:{name:'cloudflare-actions',entrypoint:'ActionsEntrypoint'}},script:caller},
  ]}));
  return {mf,external:()=>external};
 }
