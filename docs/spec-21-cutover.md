@@ -1,7 +1,8 @@
 # Spec #21 — Weixin/Bark to one Cloudflare Actions Worker
 
 Implementation target: `cloudflare-actions`, entrypoint `ActionsEntrypoint`.
-Static private catalog: `weixin.send_text`, `bark.send_notification`. The owner
+Static private catalog: `weixin.send_text`, `weixin.notify_download`,
+`bark.send_notification`. The owner
 HTTPS handler remains the existing Access-protected Weixin Owner handler.
 `ACTIONS` is the sole new Workflow Service Binding; the Workflow owns Publish,
 immutable grants, durable reservation, cancellation and all retries/Unknown rules.
@@ -9,7 +10,7 @@ immutable grants, durable reservation, cancellation and all retries/Unknown rule
 ## Evidence gathered locally
 
 - The new Worker bundles under Wrangler dry-run; runtime Service Binding test
-  returns both contracts and a historical Weixin receipt without sending.
+  returns all three contracts and a historical Weixin receipt without sending.
 - The compiled manifests on both sides match byte-for-byte SHA-256 digests.
 - Workflow tests cover one-effect reservation, cancellation, ambiguous ACK,
   migration freeze before reservation, and historical read after version change.
@@ -26,7 +27,7 @@ immutable grants, durable reservation, cancellation and all retries/Unknown rule
    instead of transferring the unavailable original secret. The old
    ciphertext MUST NOT be treated as decryptable by the new key.
 3. After old native Workflow instances are proven unable to dispatch, apply
-   migration 0017 and freeze its atomic D1 gate. Reconcile preexisting
+   migration 0018 and freeze its atomic D1 gate. Reconcile preexisting
    reserved/Unknown invocations; NEVER send those again. D1 alone cannot
    stop old native code that does not implement the gate.
 4. After all old Weixin send/poll leases complete, use the original Worker's
@@ -40,7 +41,7 @@ immutable grants, durable reservation, cancellation and all retries/Unknown rule
 6. Provision a NEW Weixin key and the required Bark keys in the new Worker
    only via an authorized protected release, with no key values in code,
    logs or chat. Stage without prematurely changing the Owner domain.
-7. Verify one active reviewed Worker Version and both Contracts; publish the
+7. Verify one active reviewed Worker Version and all three Contracts; publish the
    consumer's exact ACTIONS binding/version via its protected workflow.
    Transfer the Owner domain with a reviewed reverse path. Owner repeats
    Weixin QR/proof verification to create a NEW encrypted binding.
@@ -76,7 +77,7 @@ Workflow resource was modified. Recheck immediately before any actual cutover.
   separate Bark Secret bindings. Presence proves **inventory only**, not
   access to the unchanged Secret values.
 - Workflow D1 has **6 nonterminal Runs**, **0 nonterminated Sessions** and
-  **15 historical Action Invocation rows**. Migration `0017` is **not**
+  **15 historical Action Invocation rows**. Migration `0018` is **not**
   applied and the `cloudflare_action_gate` table **does not** exist.
   Existing code therefore has no durable cutover fence to enforce.
 - The native `workflow-mcp-orchestrator` has **1 running instance**; its
@@ -90,9 +91,7 @@ Workflow resource was modified. Recheck immediately before any actual cutover.
   plaintext key was retrieved, requested or disclosed.
 
 **Decision: NO-GO.** The new unified Publisher is not implemented via an
-approved path, fresh-key provisioning and Owner re-pair have not been executed, at least
-one old native Workflow instance is still running and the cutover fence is
-absent. None of these conditions can be waived merely
+approved path, fresh-key provisioning and Owner re-pair have not been executed, the cutover fence is absent. None of these conditions can be waived merely
 because local CI/workerd tests pass.
 
 ## Owner amendment (2026-10-30): fresh key is allowed
@@ -113,3 +112,12 @@ The Workflow consumer release gate also reads native instance statuses and
 rejects any nonterminal instance. This inventory snapshot cannot prevent
 newly created old-code instances, so pausing old admissions remains a
 separate prerequisite.
+
+**Review amendment (2026-10-30):** Workflow main already contains the
+HTTP Action migration 0017_http_connection_auth.sql and the approved
+Weixin download-notification Action. The unified cutover therefore uses
+0018_cloudflare_action_migration_fence.sql and carries all three reviewed
+Action IDs forward without changing HTTP permissions. A later read-only
+Cloudflare snapshot showed zero nonterminal native Workflow instances, but
+this cannot prevent a new old-version admission. No production cutover
+was performed.

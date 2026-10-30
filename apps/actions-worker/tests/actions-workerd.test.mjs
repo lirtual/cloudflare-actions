@@ -31,7 +31,7 @@ function fixture(caller){
  return {mf,external:()=>external};
 }
 
-test('one workerd binding exposes two reviewed contracts, historic receipts and no public send surface',async()=>{
+test('one workerd binding exposes three reviewed contracts, historic receipts and no public send surface',async()=>{
  const caller=`export default {async fetch(request,env){const q=new URL(request.url).searchParams;
    const action=q.get('action');try{
     if(q.has('list'))return Response.json(await env.ACTIONS.listActions());
@@ -47,8 +47,8 @@ test('one workerd binding exposes two reviewed contracts, historic receipts and 
   const client=await mf.getWorker('caller');
   const get=path=>client.fetch('https://caller.example/'+path);
   const listed=await(await get('?list=1')).json();
-  assert.deepEqual(listed.map(x=>x.action_id),['bark.send_notification','weixin.send_text']);
-  for(const action of ['bark.send_notification','weixin.send_text']){
+  assert.deepEqual(listed.map(x=>x.action_id),['bark.send_notification','weixin.send_text','weixin.notify_download']);
+  for(const action of ['bark.send_notification','weixin.send_text','weixin.notify_download']){
    const result=await(await get('?contract=1&action='+action)).json();
    assert.equal(result.deployment_id,version);
    assert.match(result.contract_digest,/^[a-f0-9]{64}$/);

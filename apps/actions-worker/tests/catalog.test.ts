@@ -8,8 +8,8 @@ const actions=()=>createActionDispatcher({CF_VERSION_METADATA:{id:version}} as n
 test('one private catalog exposes only the reviewed actions and versioned contracts',async()=>{
  const dispatcher=actions();
  assert.deepEqual((await dispatcher.listActions()).map(x=>x.action_id),
-  ['bark.send_notification','weixin.send_text']);
- for(const actionId of ['bark.send_notification','weixin.send_text']){
+  ['bark.send_notification','weixin.send_text','weixin.notify_download']);
+ for(const actionId of ['bark.send_notification','weixin.send_text','weixin.notify_download']){
   const result=await dispatcher.getContract(actionId);
   assert.equal(result.deployment_id,version);
   assert.match(result.contract_digest,/^[a-f0-9]{64}$/);

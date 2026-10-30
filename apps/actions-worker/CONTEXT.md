@@ -1,7 +1,8 @@
 # Unified Cloudflare Actions — bounded context (Spec #21)
 
 The `cloudflare-actions` Worker is the single **physical runtime** for the
-static reviewed Action Catalog: `weixin.send_text` and `bark.send_notification`.
+static reviewed Action Catalog: `weixin.send_text`, `weixin.notify_download`
+and `bark.send_notification`.
 A logical Provider/Handler is not a separately deployed Worker. All business
 orchestration, Published Plans, immutable Action grants, durable dispatch
 reservations and cancellation remain in `lirtual/mcp-workers` Workflow.
