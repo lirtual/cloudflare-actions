@@ -53,6 +53,38 @@ immutable grants, durable reservation, cancellation and all retries/Unknown rule
    Owner QR re-pair may be required. Never roll back D1 generation.
 
 
+## First unified Worker publisher (source only; NOT RUN)
+
+The candidate `.github/workflows/release-actions.yml` is the **single intended**
+main-only, Owner-only, GitHub Environment-scoped publisher for the new physical
+Worker. It reuses CI and Wrangler; existing Weixin/Bark publishers are retained
+only for separately authorized recovery during migration, not for routine new
+Actions releases. GitHub Environment `cloudflare-actions`, its actual protection
+rules, scoped Cloudflare credentials, and fresh Weixin/Bark secrets must be
+independently verified before any run. Merely naming an Environment in YAML does
+**not** prove its protection configuration. This source does not create one.
+
+The first-cutover publisher is **fail-closed**: requires explicit deployment
+approval and independently verified old ingress quiescence; reads exact legacy
+consumer Bindings, a frozen Workflow D1 `0018` gate, all six native nonterminal
+Workflow statuses, and sanitized original Weixin D1 unbind and preserved receipt
+counts. It rejects an already deployed unified Worker, preventing accidental
+second version promotion. Staged keys are checked for format, confined to
+Runner temporary files, and never logged. Initial publish contains **no** Owner
+custom-domain route; exact deployed Version and required Secret names are read
+back. No migration, D1 freeze, Owner unbind, QR re-pair, domain reassignment,
+notification send, automatic rollback or deletion is performed by this job.
+
+The Workflow D1 gate must be created/frozen under the existing protected
+Workflow release process **after** old physical instances are proved drained,
+not by using arbitrary SQL from this publisher. An attestation or a point-in-time
+empty inventory alone cannot prove old admission is stopped. The existing
+Cloudflare API token must also have the read permissions required for the
+preflight D1/Workflows inventory; missing scope is **No-Go**, not permission to
+bypass verification. This first-release job intentionally does not implement
+later compatible Provider upgrades or domain transfer/rollback; those require
+separately reviewed source and authorization.
+
 ## Current release decision
 
 **NO-GO for production** until trusted fresh-key provisioning and Owner
