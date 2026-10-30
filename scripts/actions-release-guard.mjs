@@ -59,10 +59,36 @@ export function verifyActionsPreflight({activeVersions,settings,secrets}){
   !rows.some(x=>x.name==='MCP_ACCESS_TOKEN'),'version metadata or retired token drift');
  return ids[0].version_id;
 }
+export async function inspectActionsDeployment(env,expected,fetcher=fetch){
+ const id=env.CLOUDFLARE_ACCOUNT_ID,token=env.CLOUDFLARE_API_TOKEN;
+ if(!/^[a-f0-9]{32}$/i.test(id??'')||typeof token!=='string'||!token||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(expected??''))
+  throw Error('Actions release blocked: missing authenticated readback identity');
+ const root='https://api.cloudflare.com/client/v4/accounts/'+id+'/workers/scripts/cloudflare-actions';
+ const get=async path=>{
+  const res=await fetcher(root+path,{redirect:'manual',headers:{Authorization:'Bearer '+token,Accept:'application/json'},
+   signal:AbortSignal.timeout(15000)});
+  if(!res.ok)throw Error('Actions release blocked: Cloudflare readback unavailable');
+  const body=await res.json();
+  if(body?.success!==true||body.result==null)throw Error('Actions release blocked: unverified Cloudflare response');
+  return body.result;
+ };
+ const [activeVersions,settings,secrets]=await Promise.all([
+  get('/deployments?per_page=1'),get('/settings'),get('/secrets')
+ ]);
+ const actual=verifyActionsPreflight({activeVersions,settings,secrets});
+ if(actual.toLowerCase()!==expected.toLowerCase())throw Error('Actions release blocked: active Version ID drift');
+ return actual;
+}
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url){
- try{
+ (async()=>{
   const config=JSON.parse(readFileSync(fileURLToPath(new URL('../apps/actions-worker/wrangler.jsonc',import.meta.url)),'utf8'));
   verifyActionsSource(config);
-  console.log('Actions source reviewed; no production runtime or credential transfer has been verified');
- }catch(error){console.error(error.message);process.exitCode=1;}
+  if(process.argv[2]==='readback'){
+   const actual=await inspectActionsDeployment(process.env,process.env.EXPECTED_VERSION_ID);
+   console.log('Reviewed unified Actions Worker Version and Secret names verified: '+actual);
+  }else if(process.argv.length===2||process.argv[2]==='source'){
+   console.log('Actions source reviewed; no production runtime or credential transfer has been verified');
+  }else throw Error('unsupported guarded mode');
+ })().catch(error=>{console.error(error.message);process.exitCode=1;});
 }
