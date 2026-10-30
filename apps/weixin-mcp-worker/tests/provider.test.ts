@@ -81,3 +81,24 @@ test("runtime deployment and contract pin must match before any receipt reservat
  assert.equal(sends,0);
  assert.equal(x.sql.prepare("SELECT count(*) AS n FROM weixin_send_receipts").get()!.n,0);
 });
+
+test("download completion notification is fixed-text, version-pinned and at-most-once",async()=>{
+ const {sendDownloadCompleteAction,providerIdentity,DOWNLOAD_COMPLETED_TEXT}=await import("../src/provider.ts");
+ const x=fixture();await x.ready();let sends=0;let text="";
+ const dispatch=async(_session:unknown,body:string)=>{
+  sends++;text=body;return "accepted" as const;
+ };
+ const pin=await providerIdentity(x.env,'download');
+ const req={invocation_id:invocation,binding_generation:1,...pin};
+ assert.notEqual(pin.contract_digest,(await providerIdentity(x.env)).contract_digest);
+ const first=await sendDownloadCompleteAction(x.env,req,dispatch as never,async()=>{});
+ const second=await sendDownloadCompleteAction(x.env,req,dispatch as never,async()=>{});
+ assert.equal(first.status,"accepted");assert.equal(second.duplicate,true);
+ assert.equal(text,DOWNLOAD_COMPLETED_TEXT);assert.equal(sends,1);
+ assert.equal((await readActionReceipt(x.env,{invocation_id:invocation,
+  binding_generation:1,input_digest:first.input_digest})).status,"accepted");
+ await assert.rejects(()=>sendDownloadCompleteAction(x.env,{
+  ...req,invocation_id:crypto.randomUUID(),contract_digest:'0'.repeat(64)
+ },dispatch as never,async()=>{}),/contract_identity_mismatch/);
+ assert.equal(sends,1);
+});

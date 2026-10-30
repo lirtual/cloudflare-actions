@@ -9,7 +9,8 @@ public MCP domain and Portal registration have already been retired.
 - Owner Access administration only: `https://weixin.lirtual.dpdns.org/setup`,
   preserving signed identity and CSRF checks. No public send API.
 - Internal `WeixinActionProvider` WorkerEntrypoint RPC: `getContract`,
-  `getBinding` (read-only decryption proof), `sendText` and `getReceipt`.
+  `getBinding` (read-only decryption proof), `sendText`, `sendDownloadComplete`,
+  `getDownloadContract` and `getReceipt`.
   All sends are pinned to a reviewed Provider Version ID and immutable digest.
 - The `WEIXIN_ENCRYPTION_KEY` Cloudflare Secret and the production
   `weixin-mcp-db` binding are inherited, never reset or recreated. The old
@@ -62,3 +63,16 @@ these columns. Verify the schema and historical receipts read-only, then use
 the single existing main-only Provider release plus the separately reviewed
 Workflow exact version pin release. This PR makes no production Cloudflare
 write and sends no Weixin messages.
+
+### Reviewed download completion notification
+
+`weixin.notify_download` is a distinct immutable contract from
+`weixin.send_text`, which remains strictly restricted to a verified OpenList
+Session URL. The new Provider RPC accepts no arbitrary text, URL or recipient:
+it sends only `Koofr 下载完成，云端文件回读校验已通过。` to the currently
+verified Owner binding. The Workflow consumer independently requires the same
+Run's reviewed single-item GitHub download Task, its OIDC-authenticated GitHub Claim,
+physically confirmed success, and completed parent Step before reserving a
+single D1 Invocation. Duplicate/ambiguous sends use read-only receipt recovery;
+`unknown` is not automatically retried. The upstream `accepted` status does
+not establish phone delivery.
