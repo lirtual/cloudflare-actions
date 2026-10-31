@@ -7,6 +7,21 @@ HTTPS handler remains the existing Access-protected Weixin Owner handler.
 `ACTIONS` is the sole new Workflow Service Binding; the Workflow owns Publish,
 immutable grants, durable reservation, cancellation and all retries/Unknown rules.
 
+## Spec #577 compatibility (current source, not deployed)
+
+The reviewed `weixin.send_text` identifier now has **two immutable historical**
+contracts and **one current** text-first contract: v1 Session Ready and v2
+Owner-only literal text remain pinned to `weixin-mcp-worker` when recorded in
+old Published Plans; new v3 Owner-only text (with optional verified Session
+URL) is pinned to `cloudflare-actions#ActionsEntrypoint`. The unified catalog
+still exposes exactly **three Action IDs**. A v3 digest selects v3 send-once;
+any v1/v2 historical invocation can only reuse its original Plan grant and
+read D1 receipt history after cutover, never infer a new dispatch right.
+The Workflow compiler accepts v3 for new Drafts and retains v2 only for
+immutable existing Plans. Old v2 Provider methods remain unchanged for
+pre-cutover compatibility. The two source repos must calculate identical v3
+Contract Digests before publication; no shared mutable registry is added.
+
 ## Evidence gathered locally
 
 - The new Worker bundles under Wrangler dry-run; runtime Service Binding test

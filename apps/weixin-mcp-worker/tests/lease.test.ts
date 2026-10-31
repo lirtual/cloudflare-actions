@@ -250,26 +250,36 @@ test('authenticated Owner message refreshes timestamp with identical context tok
  const {db,env,session}=await setup();
  db.sql.prepare('UPDATE weixin_binding SET last_verified_context_at=?').run(Math.floor(Date.now()/1000)-90000);
  let sends=0;
- await assert.rejects(()=>sendOnce(env,'before',ID,async()=>{sends++;return 'accepted';}),/owner_context_stale/);
+ // Message age is metadata only, never an artificial prerequisite.
+ assert.equal((await sendOnce(env,'before',ID,async()=>{sends++;return 'accepted';})).status,'accepted');
  assert.equal(await syncCursorOnce(env,async()=>({
   get_updates_buf:session.cursor,
   msgs:[{from_user_id:'owner',to_user_id:'bot',message_type:1,context_token:session.contextToken}]
  })),'unchanged');
  const row=db.sql.prepare('SELECT last_verified_context_at FROM weixin_binding').get()!;
  assert.ok(Number(row.last_verified_context_at)>=Math.floor(Date.now()/1000)-2);
- assert.equal((await sendOnce(env,'after',ID,async()=>{sends++;return 'accepted';})).status,'accepted');
+ assert.equal((await sendOnce(env,'before',ID,async()=>{sends++;return 'accepted';})).duplicate,true);
  assert.equal(sends,1);
 });
 
-test('unverified messages cannot refresh an old verified Owner context',async()=>{
+test('unverified messages cannot refresh verified Owner context or change the send recipient',async()=>{
  const {db,env,session}=await setup();
- db.sql.prepare('UPDATE weixin_binding SET last_verified_context_at=?').run(Math.floor(Date.now()/1000)-90000);
+ const oldTime=Math.floor(Date.now()/1000)-90000;
+ db.sql.prepare('UPDATE weixin_binding SET last_verified_context_at=?').run(oldTime);
  await syncCursorOnce(env,async()=>({
   get_updates_buf:session.cursor,
   msgs:[{from_user_id:'attacker',to_user_id:'bot',message_type:1,context_token:'wrong'}]
  }));
+ const saved=db.sql.prepare('SELECT * FROM weixin_binding').get()!;
+ assert.equal(saved.last_verified_context_at,oldTime);
+ const current=await decrypt<IlinkSession>(env,'weixin:owner:binding:1',
+  saved.session_ciphertext as string,saved.session_key_id as string);
+ assert.equal(current.ownerId,session.ownerId);
+ assert.equal(current.contextToken,session.contextToken);
  let attempts=0;
- await assert.rejects(()=>sendOnce(env,'stop',ID,async()=>{attempts++;return 'accepted';}),/owner_context_stale/);
- assert.equal(attempts,0);
- assert.equal(db.sql.prepare('SELECT count(*) AS n FROM weixin_send_receipts').get()?.n,0);
+ assert.equal((await sendOnce(env,'safe',ID,async s=>{
+  attempts++;assert.equal(s.ownerId,session.ownerId);return 'accepted';
+ })).status,'accepted');
+ assert.equal(attempts,1);
+ assert.equal(db.sql.prepare('SELECT count(*) AS n FROM weixin_send_receipts').get()?.n,1);
 });

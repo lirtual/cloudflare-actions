@@ -1,6 +1,6 @@
 import {ACTION_MANIFEST as WEIXIN_MANIFEST,providerIdentity,bindingIdentity,
- readActionReceipt,sendTextAction,sendDownloadCompleteAction,DOWNLOAD_ACTION_MANIFEST,
- type TextInvocation,type DownloadInvocation,type ReceiptQuery}
+ readActionReceipt,sendTextAction,sendDownloadCompleteAction,sendGenericTextAction,DOWNLOAD_ACTION_MANIFEST,
+ type TextInvocation,type DownloadInvocation,type GenericInvocation,type ReceiptQuery}
  from '../../weixin-mcp-worker/src/provider.ts';
 import {ACTION_MANIFEST as BARK_MANIFEST,getContract as barkContract,
  sendNotification,type Invocation} from '../../bark-provider/src/notification.ts';
@@ -17,6 +17,13 @@ export const ACTION_CATALOG=Object.freeze({
  'weixin.notify_download':Object.freeze({...DOWNLOAD_ACTION_MANIFEST,
    service:'cloudflare-actions',entrypoint:'ActionsEntrypoint'}),
 });
+// New text-first transport on the unified Worker. Version 2 remains immutable
+// on the old Worker for already-published Plans and historical receipts.
+export const UNIFIED_GENERIC_MANIFEST=Object.freeze({
+ ...ACTION_CATALOG['weixin.send_text'],version:3,
+ input_schema:{type:'object',additionalProperties:false,required:['text'],
+  properties:{text:{type:'string',minLength:1,maxLength:2048},session_step_id:{type:'string'}}},
+});
 type ActionId=keyof typeof ACTION_CATALOG;
 function registered(value:string):ActionId{
  if(!Object.hasOwn(ACTION_CATALOG,value))throw new Error('unknown_action');
@@ -32,8 +39,13 @@ export function createActionDispatcher(env:Env){
   async listActions(){
    return Object.keys(ACTION_CATALOG).map(action_id=>({action_id}));
   },
-  async getContract(action_id:string){
-   const action=registered(action_id),manifest=ACTION_CATALOG[action];
+  async getContract(action_id:string,contract_digest?:string){
+   const action=registered(action_id);
+   const normal=ACTION_CATALOG[action];
+   const digest=action==='weixin.send_text'?
+     await providerIdentity(env,normal):null;
+   const manifest=action==='weixin.send_text'&&contract_digest!==digest?.contract_digest?
+      UNIFIED_GENERIC_MANIFEST:normal;
    const identity=action!=='bark.send_notification'
     ?await providerIdentity(env,manifest):await barkContract(env,manifest);
    return {...identity,manifest};
@@ -43,7 +55,10 @@ export function createActionDispatcher(env:Env){
    if(!invocation||typeof invocation!=='object'||Array.isArray(invocation))
     throw new Error('invalid_invocation');
    return action==='weixin.send_text'
-    ?sendTextAction(env,invocation as TextInvocation,undefined,undefined,ACTION_CATALOG[action])
+    ?((await providerIdentity(env,UNIFIED_GENERIC_MANIFEST)).contract_digest===
+      (invocation as GenericInvocation).contract_digest
+      ?sendGenericTextAction(env,invocation as GenericInvocation,undefined,undefined,UNIFIED_GENERIC_MANIFEST)
+      :sendTextAction(env,invocation as TextInvocation,undefined,undefined,ACTION_CATALOG[action]))
     :action==='weixin.notify_download'
     ?sendDownloadCompleteAction(env,invocation as DownloadInvocation,undefined,undefined,ACTION_CATALOG[action])
     :sendNotification(env,invocation as Invocation,undefined,ACTION_CATALOG[action]);

@@ -32,8 +32,10 @@ Worker identity**, not a public MCP capability.
 - A send can return `accepted`, `rejected` or `unknown`. The owner
   confirmed message delivery for the production E2E, while the stored
   upstream acknowledgement remains `unknown`. Both facts are retained.
-- No public generic RPC or generic text sending endpoint is provided.
-  Legacy compatibility URLs must not be reinstated.
+- No public generic RPC or text sending endpoint is provided. Private
+  `sendGenericText` accepts only bounded Owner-directed text under the v2
+  Workflow grant and immutable deployment pin. Legacy public compatibility
+  URLs must not be reinstated.
 
 ## Publication and rollback
 

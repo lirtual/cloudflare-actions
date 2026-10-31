@@ -29,3 +29,16 @@ test('unsupported invocation cannot reach either upstream',async()=>{
  await assert.rejects(()=>dispatcher.execute('weixin.send_text',{}));
  assert.equal((await dispatcher.execute('bark.send_notification',{}) as {status:string}).status,'rejected');
 });
+
+test('one Action ID has distinct explicit v1 and default v3 RPC contracts',async()=>{
+ const dispatcher=actions();
+ const current=await dispatcher.getContract('weixin.send_text');
+ assert.equal(current.manifest.version,3);
+ const {ACTION_CATALOG}=await import('../src/dispatch.ts');
+ const {providerIdentity}=await import('../../weixin-mcp-worker/src/provider.ts');
+ const v1=await providerIdentity({CF_VERSION_METADATA:{id:version}} as never,ACTION_CATALOG['weixin.send_text']);
+ const legacy=await dispatcher.getContract('weixin.send_text',v1.contract_digest);
+ assert.equal(legacy.manifest.version,1);
+ assert.notEqual(legacy.contract_digest,current.contract_digest);
+ assert.equal((await dispatcher.listActions()).length,3);
+});

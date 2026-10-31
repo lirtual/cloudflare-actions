@@ -52,6 +52,7 @@ test('one workerd binding exposes three reviewed contracts, historic receipts an
    const result=await(await get('?contract=1&action='+action)).json();
    assert.equal(result.deployment_id,version);
    assert.match(result.contract_digest,/^[a-f0-9]{64}$/);
+   if(action==='weixin.send_text')assert.equal(result.manifest.version,3);
   }
   assert.equal((await get('?contract=1&action=arbitrary.http')).status,403);
   await db.prepare(`INSERT INTO weixin_send_receipts(generation,request_id,text_digest,status,created_at,updated_at)

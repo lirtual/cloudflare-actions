@@ -10,7 +10,7 @@ public MCP domain and Portal registration have already been retired.
   preserving signed identity and CSRF checks. No public send API.
 - Internal `WeixinActionProvider` WorkerEntrypoint RPC: `getContract`,
   `getBinding` (read-only decryption proof), `sendText`, `sendDownloadComplete`,
-  `getDownloadContract` and `getReceipt`.
+  `getDownloadContract`, `getGenericContract`, `sendGenericText` and `getReceipt`.
   All sends are pinned to a reviewed Provider Version ID and immutable digest.
 - The `WEIXIN_ENCRYPTION_KEY` Cloudflare Secret and the production
   `weixin-mcp-db` binding are inherited, never reset or recreated. The old
@@ -19,6 +19,18 @@ public MCP domain and Portal registration have already been retired.
   JSON null operation in the existing manual Provider release, then confirm
   its absence and the unchanged encryption Secret. Never retry a partially
   completed version creation without first inspecting the Cloudflare version list.
+
+## Generic Owner text contract (source-only v2)
+
+`weixin.send_text` v2 takes a bounded caller-authored text body through private
+`sendGenericText` Service Binding RPC, never a public send endpoint. Workflow
+must authorize the content and dependencies at Publish and verify completed
+predecessors before the first send. The Provider independently checks its
+reviewed v2 digest, live Worker version, Owner binding generation, message
+length, and idempotent D1 reservation; it accepts no recipient or URL override.
+The existing OpenList and download-specific RPCs are retained only to serve
+immutable published Plans during the version-pinned migration. A changed
+Worker Version ID requires separately approved Workflow pin/republication.
 
 ## Safety and evidence
 
@@ -40,16 +52,16 @@ Run `corepack pnpm run check` from the repository root for SQLite tests,
 synthetic iLink/QR tests, real local workerd D1/RPC tests, TypeScript checks,
 and Wrangler dry-run. No live Tencent request is performed by these checks.
 
-## Owner context preflight and numeric reject diagnostics (source-only proposal)
+## Trusted Owner sync and numeric reject diagnostics
 
-New sends still perform the existing bounded `getUpdates` sync. If the latest
-verified direct Owner message is older than **24 hours** (or absent), reject
-with `owner_context_stale` *before* durable reservation or Tencent dispatch.
-This is a conservative local policy, **not** a documented Tencent token TTL.
-The Owner must send a new direct message before starting a separately authorized
-new Invocation. Matching, already-reserved historical IDs are read without
-polling or resending. Verified Owner messages refresh the observation time
-even if their context token is unchanged; strangers and groups never do.
+New sends perform the existing bounded `getUpdates` sync before reserving a
+send. A successful sync and the verified, encrypted Owner binding are sufficient;
+an Owner is **not** required to send a new message every 24 hours. Failed sync,
+unready binding, generation change, lease conflict or missing verified recipient
+still block sends. An upstream-rejected or ambiguous send retains its actual
+receipt state and is never automatically replayed. Matching historical IDs are
+queried without polling or resending. Only verified Owner messages update the
+observed context timestamp; strangers and groups never do.
 
 The additive migration `migrations/0002_send_rejection_codes.sql` adds
 nullable bounded integer `upstream_ret`/`upstream_errcode` fields to D1
