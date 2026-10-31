@@ -18,19 +18,53 @@ test('Dub validates only full HTTP(S) URLs, never leaks credentials or fragments
  assert.equal(validateDubInput({url,public_stats:'true'}),null);
  assert.equal(validateDubInput({url,public_stats:false,token:'x'}),null);
 });
-test('anonymous request is one fixed POST, never fetches target, preserving query and private stats',async()=>{
- let requests=0;
+test('only acknowledge after one no-follow HEAD verifies exact target including query',async()=>{
+ let creates=0,verifications=0;
  const result=await shortenDub(env,await input(),(async (uri,opts)=>{
-  requests++;assert.equal(uri,'https://dub.co/api/links');
-  assert.equal(opts?.method,'POST');assert.equal(opts?.redirect,'manual');
-  assert.equal(new Headers(opts.headers).get('dub-anonymous-link-creation'),'1');
-  assert.equal(new Headers(opts.headers).get('authorization'),null);
-  assert.deepEqual(JSON.parse(String(opts.body)),{url,domain:'dub.sh',publicStats:false});
-  return Response.json({domain:'dub.sh',key:'xyz123',shortLink:'https://dub.sh/xyz123',url,publicStats:false});
+  assert.equal(opts?.redirect,'manual');
+  if(opts?.method==='POST'){
+   creates++;assert.equal(uri,'https://dub.co/api/links');
+   assert.equal(new Headers(opts.headers).get('dub-anonymous-link-creation'),'1');
+   assert.equal(new Headers(opts.headers).get('authorization'),null);
+   assert.deepEqual(JSON.parse(String(opts.body)),{url,domain:'dub.sh',publicStats:false});
+   return Response.json({domain:'dub.sh',key:'xyz123',shortLink:'https://dub.sh/xyz123',url,publicStats:false});
+  }
+  assert.equal(opts?.method,'HEAD');assert.equal(uri,'https://dub.sh/xyz123');
+  assert.equal(opts?.body,undefined);verifications++;
+  return new Response(null,{status:302,headers:{location:url}});
  }) as typeof fetch);
- assert.equal(requests,1);
+ assert.equal(creates,1);assert.equal(verifications,1);
  assert.equal(result.status,'accepted');
  assert.equal(result.short_link,'https://dub.sh/xyz123');
+});
+test('creation accepted by Dub but broken, missing or changed redirect remains unknown',async()=>{
+ for(const [reply,expectHead] of [
+  [new Response(null,{status:302,headers:{location:'https://example.org/path'}}),true],
+  [new Response(null,{status:302,headers:{location:'https://example.org/path?token=other'}}),true],
+  [new Response(null,{status:307,headers:{location:'https://dub.co/links'}}),true],
+  [new Response(null,{status:302}),true],
+  [new Response(null,{status:404}),true],
+  [Response.json({status:'ok'}),true],
+ ] as const){
+  let creates=0,heads=0;
+  const result=await shortenDub(env,await input(),(async (uri,opts)=>{
+   if(opts?.method==='POST'){
+    creates++;
+    return Response.json({domain:'dub.sh',key:'xyz123',shortLink:'https://dub.sh/xyz123',url,publicStats:false});
+   }
+   heads++;assert.equal(uri,'https://dub.sh/xyz123');assert.equal(opts?.redirect,'manual');
+   return reply;
+  }) as typeof fetch);
+  assert.equal(result.status,'unknown');assert.equal(creates,1);assert.equal(heads,expectHead?1:0);
+ }
+ let creates=0,heads=0;
+ const result=await shortenDub(env,await input(),(async (_uri,opts)=>{
+  if(opts?.method==='POST'){
+   creates++;return Response.json({domain:'dub.sh',key:'xyz123',shortLink:'https://dub.sh/xyz123',url,publicStats:false});
+  }
+  heads++;throw Error('HEAD timed out');
+ }) as typeof fetch);
+ assert.equal(result.status,'unknown');assert.equal(creates,1);assert.equal(heads,1);
 });
 test('bad pin, malformed input, redirect, rate-limit, and ambiguous acknowledgement fail closed',async()=>{
  let requests=0;

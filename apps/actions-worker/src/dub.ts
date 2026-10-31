@@ -1,6 +1,6 @@
 import {digest,getContract,type Env} from '../../bark-provider/src/notification.ts';
 
-/** One anonymous third-party create; no token, custom destination or follow-up GET. */
+/** One anonymous third-party create; no token or target fetch. */
 export const DUB_MANIFEST=Object.freeze({
  executor:'cloudflare',provider:'dub',action:'dub.shorten_url',version:1,
  source_repository:'lirtual/cloudflare-actions',service:'cloudflare-actions',
@@ -59,6 +59,18 @@ export async function shortenDub(env:Env,input:Invocation,
    (typeof v.url!=='string'||!validateDubUrl(v.url)||
    new URL(v.url).href!==new URL(checked.url).href)||v.publicStats!==checked.public_stats||
    v.shortLink!=='https://dub.sh/'+v.key)throw Error('dub_response_unconfirmed');
+  // Dub's create acknowledgement alone does not prove the public link resolves
+  // to the *same* target (including its full query). Read only the validated
+  // short-link host; never fetch the arbitrary destination or follow redirects.
+  // Ambiguous readback must never trigger a second create.
+  let redirect:Response;
+  try{redirect=await dispatch(v.shortLink,{method:'HEAD',redirect:'manual',
+    signal:AbortSignal.timeout(5000)});}
+  catch{return {status:'unknown' as const,input_digest:input.input_digest};}
+  const location=redirect.headers.get('location');
+  if(![301,302,303,307,308].includes(redirect.status)||
+    !location||location!==new URL(checked.url).href)
+   return {status:'unknown' as const,input_digest:input.input_digest};
   return {status:'accepted' as const,input_digest:input.input_digest,short_link:v.shortLink};
  }catch{return {status:'unknown' as const,input_digest:input.input_digest};}
 }

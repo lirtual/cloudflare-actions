@@ -8,8 +8,8 @@ const requestId='11111111-1111-4111-8111-111111111111';
 const domain='weixin-owner.example.org';
 const migration=['0001_owner.sql','0002_send_rejection_codes.sql']
  .map(name=>readFileSync(new URL('../../weixin-mcp-worker/migrations/'+name,import.meta.url),'utf8')).join('\n');
-function fixture(caller){
- let external=0;
+function fixture(caller,{dubRedirectMode='original'}={}){
+ let external=0,dubTarget='';
  const mf=new Miniflare(convertV4MiniflareOptions({port:0,workers:[
   {name:'cloudflare-actions',modules:true,script,compatibilityDate:'2026-09-15',
    d1Databases:{DB:'actions-test'},bindings:{CF_VERSION_METADATA:{id:version},
@@ -25,8 +25,12 @@ function fixture(caller){
       const body=await request.json();
       assert.equal(body.domain,'dub.sh');
       assert.equal(body.publicStats,false);
+      dubTarget=body.url;
       return Response.json({domain:'dub.sh',key:'Abc123',shortLink:'https://dub.sh/Abc123',
        url:body.url,publicStats:false});
+    }
+    if(request.url==='https://dub.sh/Abc123' && request.method==='HEAD'){
+      return new Response(null,{status:302,headers:{location:dubRedirectMode==='strip-query'?new URL(dubTarget).origin+'/':dubTarget}});
     }
     assert.equal(request.url,'https://api.day.app/push');
     const envelope=await request.json();
@@ -100,7 +104,7 @@ test('unified workerd binding forwards one encrypted Bark notification to fixed 
 });
 
 
-test('real workerd private RPC creates one anonymous Dub URL, never HTTP public send',async()=>{
+test('real workerd private RPC creates once and verifies one Dub redirect, never fetches target',async()=>{
  const target='https://example.org/file?private=value%20with%20space';
  const caller=`export default {async fetch(request,env){
   const url='${target}',public_stats=false;
@@ -123,6 +127,30 @@ test('real workerd private RPC creates one anonymous Dub URL, never HTTP public 
   const result=await response.json();
   assert.equal(result.status,'accepted');
   assert.equal(result.short_link,'https://dub.sh/Abc123');
-  assert.equal(external(),1);
+  assert.equal(external(),2);
+ }finally{await mf.dispose();}
+});
+
+test('real workerd private RPC rejects a Dub redirect that drops the target query',async()=>{
+ const target='https://example.org/path?must=be-preserved';
+ const caller=`export default {async fetch(request,env){
+  const url='${target}',public_stats=false;
+  const input_digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',
+   new TextEncoder().encode(JSON.stringify({public_stats,url})))),
+   b=>b.toString(16).padStart(2,'0')).join('');
+  const pin=await env.ACTIONS.getContract('dub.shorten_url');
+  const result=await env.ACTIONS.execute('dub.shorten_url',{
+   invocation_id:'${requestId}',deployment_id:pin.deployment_id,
+   contract_digest:pin.contract_digest,input_digest,url,public_stats});
+  return Response.json(result);
+ }};`;
+ const {mf,external}=fixture(caller,{dubRedirectMode:'strip-query'});
+ try{
+  const response=await(await mf.getWorker('caller')).fetch('https://caller.example/');
+  assert.equal(response.status,200);
+  const result=await response.json();
+  assert.equal(result.status,'unknown');
+  assert.equal(result.short_link,undefined);
+  assert.equal(external(),2); // one POST + one HEAD, never a duplicate create
  }finally{await mf.dispose();}
 });
