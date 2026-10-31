@@ -10,7 +10,7 @@ public MCP domain and Portal registration have already been retired.
   preserving signed identity and CSRF checks. No public send API.
 - Internal `WeixinActionProvider` WorkerEntrypoint RPC: `getContract`,
   `getBinding` (read-only decryption proof), `sendText`, `sendDownloadComplete`,
-  `getDownloadContract` and `getReceipt`.
+  `getDownloadContract`, `getGenericContract`, `sendGenericText` and `getReceipt`.
   All sends are pinned to a reviewed Provider Version ID and immutable digest.
 - The `WEIXIN_ENCRYPTION_KEY` Cloudflare Secret and the production
   `weixin-mcp-db` binding are inherited, never reset or recreated. The old
@@ -19,6 +19,18 @@ public MCP domain and Portal registration have already been retired.
   JSON null operation in the existing manual Provider release, then confirm
   its absence and the unchanged encryption Secret. Never retry a partially
   completed version creation without first inspecting the Cloudflare version list.
+
+## Generic Owner text contract (source-only v2)
+
+`weixin.send_text` v2 takes a bounded caller-authored text body through private
+`sendGenericText` Service Binding RPC, never a public send endpoint. Workflow
+must authorize the content and dependencies at Publish and verify completed
+predecessors before the first send. The Provider independently checks its
+reviewed v2 digest, live Worker version, Owner binding generation, message
+length, and idempotent D1 reservation; it accepts no recipient or URL override.
+The existing OpenList and download-specific RPCs are retained only to serve
+immutable published Plans during the version-pinned migration. A changed
+Worker Version ID requires separately approved Workflow pin/republication.
 
 ## Safety and evidence
 

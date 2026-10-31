@@ -30,18 +30,30 @@ export const DOWNLOAD_ACTION_MANIFEST = Object.freeze({
   required:['status'],properties:{status:{enum:['accepted','rejected','unknown']}}},
 });
 export const DOWNLOAD_COMPLETED_TEXT='Koofr 下载完成，云端文件回读校验已通过。';
+/** One bounded Owner-only text action, independent of the triggering business workflow. */
+export const GENERIC_ACTION_MANIFEST = Object.freeze({
+ executor:'cloudflare',provider:'weixin',action:'weixin.send_text',version:2,
+ source_repository:'lirtual/cloudflare-actions',service:'weixin-mcp-worker',
+ entrypoint:'WeixinActionProvider',side_effect:'send_to_verified_owner_only',
+ input_schema:{type:'object',additionalProperties:false,required:['text'],
+  properties:{text:{type:'string',minLength:1,maxLength:2048},
+   session_step_id:{type:'string'}}},
+ output_schema:{type:'object',additionalProperties:false,required:['status'],
+  properties:{status:{enum:['accepted','rejected','unknown']}}},
+});
+
 function canonical(value:unknown):unknown{
  if(Array.isArray(value))return value.map(canonical);
  if(value&&typeof value==='object')return Object.fromEntries(
   Object.entries(value).sort(([a],[b])=>a.localeCompare(b,'en')).map(([k,v])=>[k,canonical(v)]));
  return value;
 }
-export async function providerIdentity(env:Env,kind:'session'|'download'='session'){
+export async function providerIdentity(env:Env,kind:'session'|'download'|'generic'='session'){
  const deployment_id=env.CF_VERSION_METADATA?.id;
  if(typeof deployment_id!=='string'||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deployment_id))
   invalid('provider_deployment_unavailable');
- const bytes=new TextEncoder().encode(JSON.stringify(canonical(kind==='download'?DOWNLOAD_ACTION_MANIFEST:ACTION_MANIFEST)));
+ const bytes=new TextEncoder().encode(JSON.stringify(canonical(kind==='download'?DOWNLOAD_ACTION_MANIFEST:kind==='generic'?GENERIC_ACTION_MANIFEST:ACTION_MANIFEST)));
  const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
  const contract_digest=Array.from(hash,b=>b.toString(16).padStart(2,'0')).join('');
  return {deployment_id,contract_digest};
@@ -49,6 +61,7 @@ export async function providerIdentity(env:Env,kind:'session'|'download'='sessio
 export type TextInvocation = {invocation_id:string;binding_generation:number;session_url:string;
  deployment_id:string;contract_digest:string};
 export type DownloadInvocation = Omit<TextInvocation,'session_url'>;
+export type GenericInvocation = DownloadInvocation & {text:string};
 export type ReceiptQuery = {invocation_id:string;binding_generation:number;input_digest:string};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const digestRe=/^[a-f0-9]{64}$/;
@@ -148,6 +161,29 @@ export async function sendDownloadCompleteAction(
  if(input.deployment_id!==identity.deployment_id)invalid('deployment_identity_mismatch');
  if(input.contract_digest!==identity.contract_digest)invalid('contract_identity_mismatch');
  const body=DOWNLOAD_COMPLETED_TEXT,input_digest=await sha256(body);
+ const prior=await readStoredReceipt(env,input.invocation_id);
+ if(prior){
+  if(prior.generation!==input.binding_generation||prior.text_digest!==input_digest)
+   invalid('invocation_identity_conflict');
+  return {status:prior.status,duplicate:true,input_digest};
+ }
+ const result=await sendOnce(env,body,input.invocation_id,dispatch,synchronize,input.binding_generation);
+ return {status:result.status,duplicate:result.duplicate,input_digest};
+}
+/** Generic text sender. Workflow authenticates the source and freezes the content;
+ * Provider checks only Owner identity, bound contract, text bounds and send-once. */
+export async function sendGenericTextAction(
+ env:Env,input:GenericInvocation,dispatch:Dispatcher=upstreamSend,
+ synchronize:()=>Promise<void>=()=>syncCursorOnce(env,session=>
+   createIlinkClient().getUpdates(session.botToken,session.cursor)).then(()=>{})){
+ validateIdentity(input?.invocation_id,input?.binding_generation);
+ const identity=await providerIdentity(env,'generic');
+ if(input.deployment_id!==identity.deployment_id)invalid('deployment_identity_mismatch');
+ if(input.contract_digest!==identity.contract_digest)invalid('contract_identity_mismatch');
+ const body=input.text;
+ if(typeof body!=='string'||!body.trim()||new TextEncoder().encode(body).byteLength>4096)
+  invalid('invalid_text');
+ const input_digest=await sha256(body);
  const prior=await readStoredReceipt(env,input.invocation_id);
  if(prior){
   if(prior.generation!==input.binding_generation||prior.text_digest!==input_digest)
