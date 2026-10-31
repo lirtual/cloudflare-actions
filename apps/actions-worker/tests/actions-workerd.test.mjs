@@ -8,7 +8,7 @@ const requestId='11111111-1111-4111-8111-111111111111';
 const domain='weixin-owner.example.org';
 const migration=['0001_owner.sql','0002_send_rejection_codes.sql']
  .map(name=>readFileSync(new URL('../../weixin-mcp-worker/migrations/'+name,import.meta.url),'utf8')).join('\n');
-function fixture(caller,{dubRedirectMode='original'}={}){
+function fixture(caller,{dubRedirectMode='original',dubPublicStats=false}={}){
  let external=0,dubTarget='';
  const mf=new Miniflare(convertV4MiniflareOptions({port:0,workers:[
   {name:'cloudflare-actions',modules:true,script,compatibilityDate:'2026-09-15',
@@ -24,10 +24,10 @@ function fixture(caller,{dubRedirectMode='original'}={}){
       assert.equal(request.headers.get('dub-anonymous-link-creation'),'1');
       const body=await request.json();
       assert.equal(body.domain,'dub.sh');
-      assert.equal(body.publicStats,false);
+      assert.equal(body.publicStats,dubPublicStats);
       dubTarget=body.url;
       return Response.json({domain:'dub.sh',key:'Abc123',shortLink:'https://dub.sh/Abc123',
-       url:body.url,publicStats:false});
+       url:body.url,publicStats:dubPublicStats});
     }
     if(request.url==='https://dub.sh/Abc123' && request.method==='HEAD'){
       return new Response(null,{status:302,headers:{location:dubRedirectMode==='strip-query'?new URL(dubTarget).origin+'/':dubTarget}});
@@ -128,6 +128,28 @@ test('real workerd private RPC creates once and verifies one Dub redirect, never
   assert.equal(result.status,'accepted');
   assert.equal(result.short_link,'https://dub.sh/Abc123');
   assert.equal(external(),2);
+ }finally{await mf.dispose();}
+});
+
+test('real workerd binding preserves explicitly public Dub statistics',async()=>{
+ const target='https://example.org/path?stats=public';
+ const caller=`export default {async fetch(request,env){
+  const url='${target}',public_stats=true;
+  const input_digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',
+   new TextEncoder().encode(JSON.stringify({public_stats,url})))),
+   b=>b.toString(16).padStart(2,'0')).join('');
+  const pin=await env.ACTIONS.getContract('dub.shorten_url');
+  return Response.json(await env.ACTIONS.execute('dub.shorten_url',{
+   invocation_id:'${requestId}',deployment_id:pin.deployment_id,
+   contract_digest:pin.contract_digest,input_digest,url,public_stats}));
+ }};`;
+ const {mf,external}=fixture(caller,{dubPublicStats:true});
+ try{
+  const result=await(await(await mf.getWorker('caller'))
+   .fetch('https://caller.example/')).json();
+  assert.equal(result.status,'accepted');
+  assert.equal(result.short_link,'https://dub.sh/Abc123');
+  assert.equal(external(),2); // one POST and one no-follow HEAD, no target fetch
  }finally{await mf.dispose();}
 });
 
