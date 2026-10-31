@@ -39,12 +39,23 @@ export async function executeHandoff(env=process.env,fetcher=fetch){
   fail('account authorization or receipt baseline missing');
  const root='https://api.cloudflare.com/client/v4/accounts/'+env.CLOUDFLARE_ACCOUNT_ID;
  const headers={Authorization:'Bearer '+env.CLOUDFLARE_API_TOKEN,Accept:'application/json'};
+ // Errors report only fixed stage names, bounded HTTP status and numeric API
+ // code. Never include response messages, request payloads, paths or credentials.
  const api=async(path,method='GET',body)=>{
+  const stage=path.startsWith('/workers/domains')
+   ?(method==='PUT'?'domain_update':'domain_inventory')
+   :path.includes('/d1/database/'+WF_DB+'/')?'workflow_gate'
+   :path.includes('/d1/database/'+WX_DB+'/')?'owner_receipts'
+   :path.includes('/deployments')?'provider_deployments'
+   :path.endsWith('/secrets')?'provider_secret_names':'provider_settings';
   const response=await fetcher(root+path,{method,headers:{...headers,...(body?{'Content-Type':'application/json'}:{})},
    ...(body?{body:JSON.stringify(body)}:{}),redirect:'manual',signal:AbortSignal.timeout(15000)});
-  if(!response.ok)fail('Cloudflare request rejected or response unknown');
-  const d=await response.json();if(d?.success!==true||d.result==null)
-   fail('Cloudflare API response unavailable');
+  const status=Number.isSafeInteger(response.status)&&response.status>=100&&response.status<=599?response.status:0;
+  let d;try{d=await response.json();}catch{fail('Cloudflare response unavailable (stage='+stage+',http='+status+')');}
+  if(!response.ok||d?.success!==true||d.result==null){
+   const code=Array.isArray(d?.errors)?d.errors.find(e=>Number.isSafeInteger(e?.code)&&e.code>=0&&e.code<=999999)?.code:undefined;
+   fail('Cloudflare request rejected (stage='+stage+',http='+status+(code===undefined?'':',code='+code)+')');
+  }
   return d.result;
  };
  const before=await api('/workers/domains?per_page=100');
