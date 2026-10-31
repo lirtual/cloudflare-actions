@@ -32,6 +32,16 @@ function fixture(caller,{dubRedirectMode='original',dubPublicStats=false}={}){
     if(request.url==='https://dub.sh/Abc123' && request.method==='HEAD'){
       return new Response(null,{status:302,headers:{location:dubRedirectMode==='strip-query'?new URL(dubTarget).origin+'/':dubTarget}});
     }
+    if(request.url==='https://litterbox.catbox.moe/resources/internals/api.php'){
+      assert.equal(request.method,'POST');
+      const form=await request.formData();
+      assert.equal(form.get('reqtype'),'fileupload');
+      assert.equal(form.get('time'),'24h');
+      const selected=form.get('fileToUpload');
+      assert.equal(selected.name,'fixture.txt');
+      assert.equal(await selected.text(),'Litterbox workerd fixture');
+      return new Response('https://litter.catbox.moe/workerd-fixture.txt');
+    }
     if(request.url==='https://envshare.dev/api/v1/store'){
       assert.equal(request.method,'POST');
       const data=await request.json();
@@ -49,7 +59,7 @@ function fixture(caller,{dubRedirectMode='original',dubPublicStats=false}={}){
  return {mf,external:()=>external};
 }
 
-test('one workerd binding exposes five reviewed contracts, historic receipts and no public send surface',async()=>{
+test('one workerd binding exposes six reviewed contracts, historic receipts and no public send surface',async()=>{
  const caller=`export default {async fetch(request,env){const q=new URL(request.url).searchParams;
    const action=q.get('action');try{
     if(q.has('list'))return Response.json(await env.ACTIONS.listActions());
@@ -65,8 +75,8 @@ test('one workerd binding exposes five reviewed contracts, historic receipts and
   const client=await mf.getWorker('caller');
   const get=path=>client.fetch('https://caller.example/'+path);
   const listed=await(await get('?list=1')).json();
-  assert.deepEqual(listed.map(x=>x.action_id),['dub.shorten_url','envshare.share_text','bark.send_notification','weixin.send_text','weixin.notify_download']);
-  for(const action of ['dub.shorten_url','envshare.share_text','bark.send_notification','weixin.send_text','weixin.notify_download']){
+  assert.deepEqual(listed.map(x=>x.action_id),['dub.shorten_url','envshare.share_text','litterbox.upload_file','bark.send_notification','weixin.send_text','weixin.notify_download']);
+  for(const action of ['dub.shorten_url','envshare.share_text','litterbox.upload_file','bark.send_notification','weixin.send_text','weixin.notify_download']){
    const result=await(await get('?contract=1&action='+action)).json();
    assert.equal(result.deployment_id,version);
    assert.match(result.contract_digest,/^[a-f0-9]{64}$/);
@@ -204,5 +214,29 @@ test('real private workerd RPC accepts only sealed EnvShare input and returns ID
   assert.equal(result.share_id,'1111111111111111');
   assert.equal(external(),1);
   assert(!JSON.stringify(result).includes('unseal'));
+ }finally{await mf.dispose();}
+});
+
+
+test('real workerd private RPC transports one bounded Litterbox file to fixed multipart host',async()=>{
+ const caller=`export default {async fetch(_request,env){
+  const bytes=new TextEncoder().encode('Litterbox workerd fixture');
+  const hex=buf=>Array.from(new Uint8Array(buf),b=>b.toString(16).padStart(2,'0')).join('');
+  const sha256=hex(await crypto.subtle.digest('SHA-256',bytes));
+  const params={file_name:'fixture.txt',size_bytes:bytes.length,sha256,time:'24h'};
+  const canonical=value=>Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b,'en')));
+  const input_digest=hex(await crypto.subtle.digest('SHA-256',
+   new TextEncoder().encode(JSON.stringify(canonical(params)))));
+  const pin=await env.ACTIONS.getContract('litterbox.upload_file');
+  return Response.json(await env.ACTIONS.execute('litterbox.upload_file',{
+   ...params,bytes,invocation_id:'11111111-1111-4111-8111-111111111111',deployment_id:pin.deployment_id,
+   contract_digest:pin.contract_digest,input_digest}));
+ }};`;
+ const {mf,external}=fixture(caller);
+ try{
+  const reply=await(await(await mf.getWorker('caller')).fetch('https://caller.example/')).json();
+  assert.equal(reply.status,'accepted');
+  assert.equal(reply.download_url,'https://litter.catbox.moe/workerd-fixture.txt');
+  assert.equal(external(),1);
  }finally{await mf.dispose();}
 });

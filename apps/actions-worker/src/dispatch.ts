@@ -8,12 +8,14 @@ import type {Env as WeixinEnv} from '../../weixin-mcp-worker/src/types.ts';
 import type {Env as BarkEnv} from '../../bark-provider/src/notification.ts';
 import {DUB_MANIFEST,shortenDub} from './dub.ts';
 import {ENVSHARE_MANIFEST,shareEnvshare} from './envshare.ts';
+import {LITTERBOX_MANIFEST,uploadLitterbox} from './litterbox.ts';
 
 export type Env=WeixinEnv & BarkEnv;
 // Build-time, reviewed catalog: no runtime configuration or dynamic imports.
 export const ACTION_CATALOG=Object.freeze({
  'dub.shorten_url':DUB_MANIFEST,
  'envshare.share_text':ENVSHARE_MANIFEST,
+ 'litterbox.upload_file':LITTERBOX_MANIFEST,
  'bark.send_notification':Object.freeze({...BARK_MANIFEST,
    service:'cloudflare-actions',entrypoint:'ActionsEntrypoint'}),
  'weixin.send_text':Object.freeze({...WEIXIN_MANIFEST,
@@ -53,7 +55,7 @@ export function createActionDispatcher(env:Env){
    // the original v1 remains available only to callers pinning its digest.
    const manifest=action==='weixin.send_text'&&contract_digest!==digest?.contract_digest?
       UNIFIED_GENERIC_MANIFEST:normal;
-   const identity=action!=='bark.send_notification'&&action!=='dub.shorten_url'&&action!=='envshare.share_text'
+   const identity=action!=='bark.send_notification'&&action!=='dub.shorten_url'&&action!=='envshare.share_text'&&action!=='litterbox.upload_file'
     ?await providerIdentity(env,manifest):await barkContract(env,manifest);
    if(contract_digest!==undefined&&contract_digest!==identity.contract_digest)
     throw new Error('unknown_contract');
@@ -65,6 +67,7 @@ export function createActionDispatcher(env:Env){
     throw new Error('invalid_invocation');
    if(action==='dub.shorten_url')return shortenDub(env,invocation as Parameters<typeof shortenDub>[1]);
    if(action==='envshare.share_text')return shareEnvshare(env,invocation as Parameters<typeof shareEnvshare>[1]);
+   if(action==='litterbox.upload_file')return uploadLitterbox(env,invocation as Parameters<typeof uploadLitterbox>[1]);
    return action==='weixin.send_text'
     ?((await providerIdentity(env,UNIFIED_GENERIC_MANIFEST)).contract_digest===
       (invocation as GenericInvocation).contract_digest
