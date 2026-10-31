@@ -1,8 +1,9 @@
-# Spec #35 — EnvShare data boundary (source-only design, not an enabled Action)
+# Spec #35 — EnvShare data boundary (staged source, not deployed)
 
-Status: **design / offline protocol verification only**. No EnvShare Action
-is published in the static Catalog; no third-party storage or read was performed.
-This is a **new Cloudflare Actions stage**, not a revival of cancelled
+Status: **source-only staged Provider and Workflow Consumer; local CI/tests only**.
+The source Catalog now contains EnvShare, but no Worker release/Workflow
+publication/real upstream write or read has been authorized or performed.
+This remains a **new Cloudflare Actions stage**, not a revival of cancelled
 `lirtual/mcp-workers#325`.
 
 ## Verified existing boundaries
@@ -27,10 +28,10 @@ This is a **new Cloudflare Actions stage**, not a revival of cancelled
   `GET /api/v1/load?id=<id>` consumes a read, so a 1-read share
   must **not** be casually read back while testing.
 
-## Minimum viable data flow — proposed, not yet published
+## Staged source data flow — not yet published
 
-1. Only a reviewed **manual one-shot** `envshare.share_text` Plan may
-   accept a bounded plaintext input (default 24h, one read, <=16 KiB
+1. Only a reviewed **manual one-shot** `envshare.share_text` Plan with a
+   unique mandatory `idempotency_key` may accept a bounded plaintext input (default 24h, one read, <=16 KiB
    UTF-8). Reject Cron, Webhook, GitHub-event, arbitrary endpoints and
    any automatic retry. Explicit user instruction remains essential.
 2. At the existing authenticated Workflow admission **before D1
@@ -46,10 +47,11 @@ This is a **new Cloudflare Actions stage**, not a revival of cancelled
    Provider Version grant, cancellation and durable at-most-once fence.
 4. Deliver the secret key **only through a non-persisting response** to
    the requesting client, then combine it with the confirmed returned
-   ID to form the URL **outside normal Workflow persistence**. A
-   narrowly scoped transient completion path in the existing Workflow
-   API is one possible approach; it requires source review and real
-   client/tool-response verification before implementation. The key
+   ID to form the URL **outside normal Workflow persistence**. The staged `workflow_run` response returns `envshare_key_base58` once;
+   after `workflow_result` confirms success,
+   `workflow_envshare_link(run_id,key_base58)` authenticates that key against
+   durable ciphertext and forms the full URL without writing it to D1.
+   Real client/tool-response verification is still required. The key
    may appear in the user-facing ChatGPT conversation by the nature
    of handing the resulting URL to the user; it must not enter D1,
    Worker logs or third-party store payloads.
@@ -67,9 +69,8 @@ This is a **new Cloudflare Actions stage**, not a revival of cancelled
   failed/unknown acknowledgements.
 - Offline independent AES-GCM/Base58 v2 interoperability and output
   validation; real workerd Binding test with **isolated stub upstream**.
-  The test-only local fixture in
-  `apps/actions-worker/tests/envshare-protocol.test.ts` proves only
-  compatibility, **not** a deployed Handler or live endpoint behavior.
+  Local protocol, Provider-handler and private Miniflare/workerd RPC tests
+  prove source behavior only, **not** a deployed Handler or live endpoint behavior.
 - Real ChatGPT-facing transient key delivery/combination verified;
   no invocation without a fresh explicit request. Confirm the minimum
   client behavior without a local Node runtime, plugin refresh or
@@ -81,9 +82,10 @@ This is a **new Cloudflare Actions stage**, not a revival of cancelled
   safety gates. Any source PR/CI is not authorization to deploy or
   perform a real third-party POST.
 
-**Current decision boundary:** A normal Workflow Run cannot meet the
-privacy contract. Do not register `envshare.share_text` as runnable
-until the transient delivery mechanism is proven end-to-end. The
+**Current decision boundary:** The staged special-case Workflow Run avoids
+normal D1 plaintext/key persistence. Do not publish/deploy or claim
+`envshare.share_text` runnable until the transient delivery mechanism
+is proven end-to-end. The
 Client-side pre-encryption alternative also avoids D1 secrets, but
 would require a verified native client encryption capability; do not
 pretend this is already provided by ChatGPT.

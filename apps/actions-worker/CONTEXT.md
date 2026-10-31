@@ -2,7 +2,8 @@
 
 The `cloudflare-actions` Worker is the single **physical runtime** for the
 static reviewed Action Catalog: `weixin.send_text`, `weixin.notify_download`,
-`bark.send_notification`, and `dub.shorten_url`.
+`bark.send_notification`, `dub.shorten_url`, and source-staged
+`envshare.share_text` (not deployed/accepted).
 A logical Provider/Handler is not a separately deployed Worker. All business
 orchestration, Published Plans, immutable Action grants, durable dispatch
 reservations and cancellation remain in `lirtual/mcp-workers` Workflow.
@@ -133,10 +134,15 @@ release path for any subsequent production change.
 
 ## Spec #35 · EnvShare follow-on boundary (NOT runnable)
 
-EnvShare has a distinct ciphertext-only acceptance stage. Current Workflow
-Run inputs and outputs are durable in D1: a normal `inputs.text` would
-persist plaintext, and a normal full `unseal#...` Action output would
-persist its decryption key. No EnvShare Handler is registered or deployed.
-See `docs/spec-35-envshare-boundary.md` for the verified upstream v2
-crypto contract, proposed ephemeral key delivery, replay-loss tradeoff
-and required tests. Do not reuse the cancelled CandyBox Worker/PR.
+EnvShare has a distinct ciphertext-only acceptance stage. The source-staged
+`envshare.share_text` Handler is registered in the **source** Catalog,
+but is **not deployed, enabled or third-party E2E accepted**. It requires
+fixed `https://envshare.dev/api/v1/store`, ciphertext/IV/TTL/reads only,
+and returns a validated Base58 share ID without the secret key.
+The Workflow Consumer branch encrypts before D1 and delivers the one-time
+key only in the original manual admission response, while
+`workflow_envshare_link` assembles a successful link outside durable
+Run outputs. A repeated/lost original reply cannot recover the key.
+See `docs/spec-35-envshare-boundary.md`; source/CI alone is not
+production authorization or real ChatGPT client acceptance.
+Do not reuse the cancelled CandyBox Worker/PR.

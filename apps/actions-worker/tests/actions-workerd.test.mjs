@@ -32,6 +32,16 @@ function fixture(caller,{dubRedirectMode='original',dubPublicStats=false}={}){
     if(request.url==='https://dub.sh/Abc123' && request.method==='HEAD'){
       return new Response(null,{status:302,headers:{location:dubRedirectMode==='strip-query'?new URL(dubTarget).origin+'/':dubTarget}});
     }
+    if(request.url==='https://envshare.dev/api/v1/store'){
+      assert.equal(request.method,'POST');
+      const payload=await request.json();
+      assert.deepEqual(Object.keys(payload).sort(),['encrypted','iv','reads','ttl']);
+      assert.equal(payload.iv,'1111111111111111');
+      assert.equal(payload.ttl,86400);assert.equal(payload.reads,1);
+      assert.equal(Object.hasOwn(payload,'key'),false);
+      assert.equal(Object.hasOwn(payload,'text'),false);
+      return Response.json({id:'1111111111111111'});
+    }
     assert.equal(request.url,'https://api.day.app/push');
     const envelope=await request.json();
     assert.equal(Object.hasOwn(envelope,'body'),false);
@@ -43,7 +53,7 @@ function fixture(caller,{dubRedirectMode='original',dubPublicStats=false}={}){
  return {mf,external:()=>external};
 }
 
-test('one workerd binding exposes four reviewed contracts, historic receipts and no public send surface',async()=>{
+test('one workerd binding exposes five reviewed contracts, historic receipts and no public send surface',async()=>{
  const caller=`export default {async fetch(request,env){const q=new URL(request.url).searchParams;
    const action=q.get('action');try{
     if(q.has('list'))return Response.json(await env.ACTIONS.listActions());
@@ -59,8 +69,8 @@ test('one workerd binding exposes four reviewed contracts, historic receipts and
   const client=await mf.getWorker('caller');
   const get=path=>client.fetch('https://caller.example/'+path);
   const listed=await(await get('?list=1')).json();
-  assert.deepEqual(listed.map(x=>x.action_id),['dub.shorten_url','bark.send_notification','weixin.send_text','weixin.notify_download']);
-  for(const action of ['dub.shorten_url','bark.send_notification','weixin.send_text','weixin.notify_download']){
+  assert.deepEqual(listed.map(x=>x.action_id),['dub.shorten_url','envshare.share_text','bark.send_notification','weixin.send_text','weixin.notify_download']);
+  for(const action of ['dub.shorten_url','envshare.share_text','bark.send_notification','weixin.send_text','weixin.notify_download']){
    const result=await(await get('?contract=1&action='+action)).json();
    assert.equal(result.deployment_id,version);
    assert.match(result.contract_digest,/^[a-f0-9]{64}$/);
@@ -75,6 +85,7 @@ test('one workerd binding exposes four reviewed contracts, historic receipts and
   assert.equal((await(await get('?receipt=1&action=weixin.send_text')).json()).status,'unknown');
   assert.equal((await get('?receipt=1&action=bark.send_notification')).status,403);
   assert.equal((await get('?receipt=1&action=dub.shorten_url')).status,403);
+  assert.equal((await get('?receipt=1&action=envshare.share_text')).status,403);
   assert.equal((await mf.dispatchFetch('https://weixin-owner.example.org/mcp')).status,404);
   assert.equal((await mf.dispatchFetch('https://weixin-owner.example.org/setup')).status,403);
   assert.equal(external(),0);
@@ -174,5 +185,28 @@ test('real workerd private RPC rejects a Dub redirect that drops the target quer
   assert.equal(result.status,'unknown');
   assert.equal(result.short_link,undefined);
   assert.equal(external(),2); // one POST + one HEAD, never a duplicate create
+ }finally{await mf.dispose();}
+});
+
+
+test('actual workerd private RPC creates one ciphertext-only EnvShare record',async()=>{
+ const caller=`export default {async fetch(request,env){
+  const payload={encrypted:'${'2'.repeat(100)}',iv:'1111111111111111',ttl:86400,reads:1};
+  const sort=o=>Object.fromEntries(Object.entries(o).sort(([a],[b])=>a.localeCompare(b,'en')));
+  const bytes=new TextEncoder().encode(JSON.stringify(sort(payload)));
+  const input_digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),
+   b=>b.toString(16).padStart(2,'0')).join('');
+  const contract=await env.ACTIONS.getContract('envshare.share_text');
+  return Response.json(await env.ACTIONS.execute('envshare.share_text',{
+   ...payload,invocation_id:'${requestId}',deployment_id:contract.deployment_id,
+   contract_digest:contract.contract_digest,input_digest}));
+ }};`;
+ const {mf,external}=fixture(caller);
+ try{
+  const reply=await(await(await mf.getWorker('caller')).fetch('https://caller.example/')).json();
+  assert.equal(reply.status,'accepted');
+  assert.equal(reply.share_id,'1111111111111111');
+  assert.equal(Object.hasOwn(reply,'key'),false);
+  assert.equal(external(),1);
  }finally{await mf.dispose();}
 });
