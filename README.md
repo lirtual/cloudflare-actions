@@ -1,5 +1,14 @@
 # Cloudflare Actions
 
+> **Spec #21 source migration (not deployed).** `apps/actions-worker` now contains
+> the intended single `cloudflare-actions` runtime and its build-time Action
+> Catalog. This is **not** the currently released production topology.
+> Existing Weixin/Bark Worker and manual release paths remain active until a
+> separately authorized cutover proves a new Weixin key, Owner re-pair,
+> historical D1 continuity, old Workflow instance drain, exact Worker version
+> and Owner domain rollback. See [implementation and No-Go gates](docs/spec-21-cutover.md),
+> [bounded context](apps/actions-worker/CONTEXT.md) and [ADR](docs/adr/0001-single-worker-action-catalog.md).
+
 Independent, reviewed Cloudflare Action Providers. Specification:
 https://github.com/lirtual/mcp-workers/issues/392.
 

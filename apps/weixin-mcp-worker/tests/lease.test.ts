@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import {encrypt,decrypt} from '../src/crypto.ts';
 import {sendOnce} from '../src/state.ts';
+import {bindingIdentity,readActionReceipt} from '../src/provider.ts';
 import {acquireLease,releaseLease,syncCursorOnce,unbindLocal} from '../src/lease.ts';
 import type {Env,IlinkSession} from '../src/types.ts';
 const ID='9c87e9bc-3678-4c0a-88cd-6714c5d63ef4';
@@ -63,6 +64,46 @@ test('owner unbind is rejected while send has an active D1 lease; no second requ
   await assert.rejects(()=>sendOnce(env,'one',ID,async()=>{otherStarted++;return 'accepted';}),
     /request_id_generation_conflict/);
   assert.equal(otherStarted,0);
+});
+test('a fresh encryption key after owner unbind keeps historical receipts and prevents replay',async()=>{
+  const {db,env,ready}=await setup();
+  const original=db.sql.prepare('SELECT session_ciphertext,session_key_id FROM weixin_binding WHERE id=1').get()!;
+  const originalKey=env.WEIXIN_ENCRYPTION_KEY;
+  const text='historical notification';
+  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(text))),b=>b.toString(16).padStart(2,'0')).join('');
+  db.sql.prepare(`INSERT INTO weixin_send_receipts
+    (generation,request_id,text_digest,status,created_at,updated_at)
+    VALUES(1,?,?,'unknown',1,1)`).run(ID,digest);
+
+  assert.equal(await unbindLocal(env),2);
+  const unbound=db.sql.prepare('SELECT generation,state,session_ciphertext,session_key_id FROM weixin_binding WHERE id=1').get()!;
+  assert.equal(unbound.generation,2);
+  assert.equal(unbound.state,'unbound');
+  assert.equal(unbound.session_ciphertext,null);
+  assert.equal(unbound.session_key_id,null);
+
+  // Reprovision only the new Worker; the old key is not available to it.
+  env.WEIXIN_ENCRYPTION_KEY=Buffer.alloc(32,23).toString('base64');
+  assert.notEqual(env.WEIXIN_ENCRYPTION_KEY,originalKey);
+  await assert.rejects(()=>decrypt(env,'weixin:owner:binding:1',
+    original.session_ciphertext as string,original.session_key_id as string),/invalid_ciphertext/);
+  assert.deepEqual(await bindingIdentity(env),{generation:2,ready:false});
+  assert.deepEqual(await readActionReceipt(env,{
+    invocation_id:ID,binding_generation:1,input_digest:digest
+  }),{status:'unknown'});
+  assert.equal(db.sql.prepare('SELECT count(*) AS n FROM weixin_send_receipts').get()?.n,1);
+
+  // Simulates the owner verifying a fresh session after OTP/QR proof.
+  await ready(2);
+  assert.deepEqual(await bindingIdentity(env),{generation:2,ready:true});
+  let sends=0;
+  await assert.rejects(()=>sendOnce(env,text,ID,async()=>{sends++;return 'accepted';}),
+    /request_id_generation_conflict/);
+  assert.equal(sends,0);
+  assert.deepEqual(await readActionReceipt(env,{
+    invocation_id:ID,binding_generation:1,input_digest:digest
+  }),{status:'unknown'});
 });
 test('single poller lease blocks send and unbind; cursor is encrypted, fenced and messages discarded',async()=>{
   const {db,env,session}=await setup();

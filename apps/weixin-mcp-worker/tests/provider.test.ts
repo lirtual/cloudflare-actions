@@ -122,3 +122,22 @@ test('generic Owner-only text is validated, version-pinned and sent at most once
     dispatch as never,async()=>{}),/invalid_text/);
  assert.equal(sends,1);
 });
+
+test('unified v3 and legacy v2 are different immutable generic text contracts',async()=>{
+ const {sendGenericTextAction,providerIdentity}=await import('../src/provider.ts');
+ const {UNIFIED_GENERIC_MANIFEST}=await import('../../actions-worker/src/dispatch.ts');
+ const x=fixture();await x.ready();let sends=0;
+ const v2=await providerIdentity(x.env,'generic');
+ const v3=await providerIdentity(x.env,UNIFIED_GENERIC_MANIFEST);
+ assert.notEqual(v2.contract_digest,v3.contract_digest);
+ const input={invocation_id:invocation,binding_generation:1,text:'Owner alert',...v3};
+ const send=async()=>{sends++;return 'accepted' as const;};
+ const first=await sendGenericTextAction(x.env,input,send as never,async()=>{},UNIFIED_GENERIC_MANIFEST);
+ const second=await sendGenericTextAction(x.env,input,send as never,async()=>{},UNIFIED_GENERIC_MANIFEST);
+ assert.equal(first.status,'accepted');assert.equal(second.duplicate,true);assert.equal(sends,1);
+ await assert.rejects(()=>sendGenericTextAction(x.env,{...input,invocation_id:crypto.randomUUID(),
+   contract_digest:v2.contract_digest},send as never,async()=>{},UNIFIED_GENERIC_MANIFEST),/contract_identity_mismatch/);
+ await assert.rejects(()=>sendGenericTextAction(x.env,{...input,invocation_id:crypto.randomUUID(),
+   text:'x'.repeat(2049)},send as never,async()=>{},UNIFIED_GENERIC_MANIFEST),/invalid_text/);
+ assert.equal(sends,1);
+});

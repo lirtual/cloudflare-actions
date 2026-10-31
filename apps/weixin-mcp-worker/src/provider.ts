@@ -48,12 +48,14 @@ function canonical(value:unknown):unknown{
   Object.entries(value).sort(([a],[b])=>a.localeCompare(b,'en')).map(([k,v])=>[k,canonical(v)]));
  return value;
 }
-export async function providerIdentity(env:Env,kind:'session'|'download'|'generic'='session'){
+export async function providerIdentity(env:Env,kindOrManifest:unknown='session'){
  const deployment_id=env.CF_VERSION_METADATA?.id;
  if(typeof deployment_id!=='string'||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deployment_id))
   invalid('provider_deployment_unavailable');
- const bytes=new TextEncoder().encode(JSON.stringify(canonical(kind==='download'?DOWNLOAD_ACTION_MANIFEST:kind==='generic'?GENERIC_ACTION_MANIFEST:ACTION_MANIFEST)));
+ const manifest=typeof kindOrManifest==='string'?
+  (kindOrManifest==='download'?DOWNLOAD_ACTION_MANIFEST:kindOrManifest==='generic'?GENERIC_ACTION_MANIFEST:ACTION_MANIFEST):kindOrManifest;
+ const bytes=new TextEncoder().encode(JSON.stringify(canonical(manifest)));
  const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
  const contract_digest=Array.from(hash,b=>b.toString(16).padStart(2,'0')).join('');
  return {deployment_id,contract_digest};
@@ -134,9 +136,10 @@ async function upstreamSend(session:IlinkSession,body:string,requestId:string):P
 /** Send through the existing durable D1 reservation. Never auto-retry unknown. */
 export async function sendTextAction(env:Env,input:TextInvocation,dispatch:Dispatcher=upstreamSend,
   synchronize:()=>Promise<void>=()=>syncCursorOnce(env,session=>
-    createIlinkClient().getUpdates(session.botToken,session.cursor)).then(()=>{})){
+    createIlinkClient().getUpdates(session.botToken,session.cursor)).then(()=>{}),
+  manifest:unknown=ACTION_MANIFEST){
  validateIdentity(input?.invocation_id,input?.binding_generation);
- const identity=await providerIdentity(env);
+ const identity=await providerIdentity(env,manifest);
  if(input.deployment_id!==identity.deployment_id)invalid('deployment_identity_mismatch');
  if(input.contract_digest!==identity.contract_digest)invalid('contract_identity_mismatch');
  const body=readyMessage(input.session_url),input_digest=await sha256(body);
@@ -155,9 +158,10 @@ export async function sendTextAction(env:Env,input:TextInvocation,dispatch:Dispa
 export async function sendDownloadCompleteAction(
  env:Env,input:DownloadInvocation,dispatch:Dispatcher=upstreamSend,
  synchronize:()=>Promise<void>=()=>syncCursorOnce(env,session=>
-   createIlinkClient().getUpdates(session.botToken,session.cursor)).then(()=>{})){
+   createIlinkClient().getUpdates(session.botToken,session.cursor)).then(()=>{}),
+ manifest:unknown=DOWNLOAD_ACTION_MANIFEST){
  validateIdentity(input?.invocation_id,input?.binding_generation);
- const identity=await providerIdentity(env,'download');
+ const identity=await providerIdentity(env,manifest);
  if(input.deployment_id!==identity.deployment_id)invalid('deployment_identity_mismatch');
  if(input.contract_digest!==identity.contract_digest)invalid('contract_identity_mismatch');
  const body=DOWNLOAD_COMPLETED_TEXT,input_digest=await sha256(body);
@@ -175,13 +179,15 @@ export async function sendDownloadCompleteAction(
 export async function sendGenericTextAction(
  env:Env,input:GenericInvocation,dispatch:Dispatcher=upstreamSend,
  synchronize:()=>Promise<void>=()=>syncCursorOnce(env,session=>
-   createIlinkClient().getUpdates(session.botToken,session.cursor)).then(()=>{})){
+   createIlinkClient().getUpdates(session.botToken,session.cursor)).then(()=>{}),
+ manifest:unknown=GENERIC_ACTION_MANIFEST){
  validateIdentity(input?.invocation_id,input?.binding_generation);
- const identity=await providerIdentity(env,'generic');
+ const identity=await providerIdentity(env,manifest);
  if(input.deployment_id!==identity.deployment_id)invalid('deployment_identity_mismatch');
  if(input.contract_digest!==identity.contract_digest)invalid('contract_identity_mismatch');
  const body=input.text;
- if(typeof body!=='string'||!body.trim()||new TextEncoder().encode(body).byteLength>4096)
+ if(typeof body!=='string'||!body.trim()||new TextEncoder().encode(body).byteLength>4096||
+    (manifest!==GENERIC_ACTION_MANIFEST&&body.length>2048))
   invalid('invalid_text');
  const input_digest=await sha256(body);
  const prior=await readStoredReceipt(env,input.invocation_id);
