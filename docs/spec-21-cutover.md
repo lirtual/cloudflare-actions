@@ -71,13 +71,28 @@ Contract Digests before publication; no shared mutable registry is added.
 ## First unified Worker publisher (source only; NOT RUN)
 
 The candidate `.github/workflows/release-actions.yml` is the **single intended**
-main-only, Owner-only, GitHub Environment-scoped publisher for the new physical
-Worker. It reuses CI and Wrangler; existing Weixin/Bark publishers are retained
-only for separately authorized recovery during migration, not for routine new
-Actions releases. GitHub Environment `cloudflare-actions`, its actual protection
-rules, scoped Cloudflare credentials, and fresh Weixin/Bark secrets must be
-independently verified before any run. Merely naming an Environment in YAML does
-**not** prove its protection configuration. This source does not create one.
+main-only, Owner-only GitHub Actions publisher for the new physical
+Worker. It deliberately uses **no GitHub Environment** because the single
+Owner opted out of the extra reviewer gate on 2026-10-31. Only an explicit
+`workflow_dispatch` on current `main`, from `lirtual`, with affirmative
+production and quiescence inputs can start it; the existing fail-closed
+read-only preflight, CI and production concurrency lock remain mandatory.
+The checked repository Actions Secrets must contain
+`CLOUDFLARE_API_TOKEN`, `BARK_DEVICE_KEY`, and the 32-character ASCII
+`BARK_ENCRYPTION_KEY`. The **fresh** `WEIXIN_ENCRYPTION_KEY` is created
+using the Node cryptographic RNG inside the one-time protected release
+Runner and written exclusively to its mode-0600 temporary secrets file
+before uploading as a Cloudflare Worker Secret; its value is never logged
+or stored as a GitHub Secret. First-cutover preflight rejects an existing
+unified Worker, so a retry cannot silently rotate a deployed key. Future
+compatible releases must preserve the Worker Secret, never generate a new
+key. `CLOUDFLARE_ACCOUNT_ID` stays a repository Actions Variable. The
+existing `bark-provider` Environment-scoped secrets are **not** inherited
+by this release. No key is generated or deployed merely by merging code.
+Populate both encrypted Bark repository Secrets before manually
+dispatching; the Weixin key is only generated inside that first release.
+This trades independent Environment approval for a simpler sole-maintainer
+workflow, not for weaker operational cutover prerequisites.
 
 The first-cutover publisher is **fail-closed**: requires explicit deployment
 approval and independently verified old ingress quiescence; reads exact legacy

@@ -1,7 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {verifyNativeEmpty,verifyFrozen,verifyLegacyBindings,validatedSecrets,parsePublishedVersion,
+import {readFileSync,mkdtempSync,rmSync,statSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {spawnSync} from 'node:child_process';
+import {verifyNativeEmpty,verifyFrozen,verifyLegacyBindings,validatedSecrets,generateFreshWeixinKey,parsePublishedVersion,
  readOnlyPreflight,NATIVE_STATES} from './actions-protected-release.mjs';
 const ok={success:true,result:[],result_info:{count:0}};
 const old=[
@@ -73,15 +77,44 @@ test('production preflight reads old bindings, D1 and every physical Workflow st
  await assert.rejects(readOnlyPreflight({...env,ACTIONS_EXPECTED_RECEIPTS:'8'},fake),/blocked/);
  await assert.rejects(readOnlyPreflight({...env,ACTIONS_EXPECTED_RECEIPTS:'6'},fake),/blocked/);
 });
+test('first release creates a fresh 256-bit Weixin encryption key without a GitHub-stored secret',()=>{
+ const a=generateFreshWeixinKey(),b=generateFreshWeixinKey();
+ assert.notEqual(a,b);
+ for(const value of [a,b]){
+  assert.match(value,/^[A-Za-z0-9+/]{43}=$/);
+  assert.equal(Buffer.from(value,'base64').length,32);
+  assert.equal(Buffer.from(value,'base64').toString('base64'),value);
+ }
+});
+test('first-release secrets mode stages fresh Weixin key as private file without printing credentials',t=>{
+ const temp=mkdtempSync(join(tmpdir(),'spec21-first-release-'));
+ t.after(()=>rmSync(temp,{recursive:true,force:true}));
+ const file=join(temp,'actions-cutover-secrets.json');
+ const result=spawnSync(process.execPath,[fileURLToPath(new URL('./actions-protected-release.mjs',import.meta.url)),
+  'secrets',file],{env:{...process.env,RUNNER_TEMP:temp,BARK_DEVICE_KEY:'BarkDevice123456',
+  BARK_ENCRYPTION_KEY:'B'.repeat(32)},encoding:'utf8'});
+ assert.equal(result.status,0,result.stderr);
+ assert.equal(statSync(file).mode&0o777,0o600);
+ const staged=JSON.parse(readFileSync(file,'utf8'));
+ assert.equal(staged.BARK_DEVICE_KEY,'BarkDevice123456');
+ assert.equal(staged.BARK_ENCRYPTION_KEY,'B'.repeat(32));
+ assert.equal(Buffer.from(staged.WEIXIN_ENCRYPTION_KEY,'base64').length,32);
+ assert.ok(!result.stdout.includes(staged.WEIXIN_ENCRYPTION_KEY));
+ assert.ok(!result.stderr.includes(staged.WEIXIN_ENCRYPTION_KEY));
+});
 test('unified publisher is guarded, Owner-only and never switches domain automatically',()=>{
  const workflow=readFileSync(new URL('../.github/workflows/release-actions.yml',import.meta.url),'utf8');
  for(const s of ["github.ref == 'refs/heads/main'","github.actor == 'lirtual'",
   'inputs.deploy_to_production == true','inputs.actions_old_ingress_quiesced == true',
-  'environment: cloudflare-actions','cancel-in-progress: false',
+  'cancel-in-progress: false',
+  'BARK_DEVICE_KEY: ${{ secrets.BARK_DEVICE_KEY }}',
+  'BARK_ENCRYPTION_KEY: ${{ secrets.BARK_ENCRYPTION_KEY }}',
   'node scripts/actions-protected-release.mjs preflight',
   'node scripts/actions-protected-release.mjs secrets',
   'node scripts/actions-release-guard.mjs readback',
   'wrangler deploy --secrets-file'])assert.ok(workflow.includes(s),s);
+ assert.ok(!/^\s+environment:/m.test(workflow),'first release uses repository Actions Secrets without an Environment');
+ assert.ok(!workflow.includes('secrets.WEIXIN_ENCRYPTION_KEY'),'fresh Weixin key must not depend on repository Secrets');
  assert.ok(workflow.indexOf('actions-protected-release.mjs preflight')<workflow.indexOf('wrangler deploy --secrets-file'));
  assert.ok(!workflow.includes('wrangler d1 execute')&&!workflow.includes('wrangler delete'));
 });
