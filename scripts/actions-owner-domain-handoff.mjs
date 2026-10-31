@@ -43,7 +43,7 @@ export async function executeHandoff(env=process.env,fetcher=fetch){
  // code. Never include response messages, request payloads, paths or credentials.
  const api=async(path,method='GET',body)=>{
   const stage=path.startsWith('/workers/domains')
-   ?(method==='PUT'?'domain_update':'domain_inventory')
+   ?(method==='PUT'?'domain_attach':method==='DELETE'?'domain_detach':'domain_inventory')
    :path.includes('/d1/database/'+WF_DB+'/')?'workflow_gate'
    :path.includes('/d1/database/'+WX_DB+'/')?'owner_receipts'
    :path.includes('/deployments')?'provider_deployments'
@@ -51,14 +51,17 @@ export async function executeHandoff(env=process.env,fetcher=fetch){
   const response=await fetcher(root+path,{method,headers:{...headers,...(body?{'Content-Type':'application/json'}:{})},
    ...(body?{body:JSON.stringify(body)}:{}),redirect:'manual',signal:AbortSignal.timeout(15000)});
   const status=Number.isSafeInteger(response.status)&&response.status>=100&&response.status<=599?response.status:0;
+  // Cloudflare DELETE may return HTTP 204 with no response body.
+  if(method==='DELETE'&&response.ok&&status===204)return true;
   let d;try{d=await response.json();}catch{fail('Cloudflare response unavailable (stage='+stage+',http='+status+')');}
-  if(!response.ok||d?.success!==true||d.result==null){
+  if(!response.ok||d?.success!==true||(d.result==null&&method!=='DELETE')){
    const code=Array.isArray(d?.errors)?d.errors.find(e=>Number.isSafeInteger(e?.code)&&e.code>=0&&e.code<=999999)?.code:undefined;
    fail('Cloudflare request rejected (stage='+stage+',http='+status+(code===undefined?'':',code='+code)+')');
   }
   return d.result;
  };
- const before=await api('/workers/domains?per_page=100');
+ const listDomain=()=>api('/workers/domains?hostname='+encodeURIComponent(HOST));
+ const before=await listDomain();
  const domain=verifyDomain(before,from);
  const sql="SELECT state, (SELECT COUNT(*) FROM d1_migrations WHERE name='0018_cloudflare_action_migration_fence.sql') migration_count, (SELECT COUNT(*) FROM workflows WHERE deleted_at IS NULL AND state='active') active_workflows, (SELECT COUNT(*) FROM workflows WHERE deleted_at IS NULL AND state='paused') paused_workflows, (SELECT COUNT(*) FROM runs WHERE outcome IS NULL OR outcome NOT IN ('succeeded','failed','cancelled','indeterminate')) unsettled_runs FROM cloudflare_action_gate WHERE id=1";
  verifyFrozenSnapshot(await api('/d1/database/'+WF_DB+'/query','POST',{sql}));
@@ -82,13 +85,69 @@ export async function executeHandoff(env=process.env,fetcher=fetch){
  if(version.toLowerCase()!==env.ACTIONS_EXPECTED_PROVIDER_VERSION.toLowerCase())
   fail('exact active Provider version changed');
  if(to===OLD)await api('/workers/scripts/'+OLD+'/settings');
- const fresh=await api('/workers/domains?per_page=100');
+ const fresh=await listDomain();
  if(verifyDomain(fresh,from)!==domain)fail('domain changed before write');
- // Exactly one approved route update. Never retry a request with unknown outcome.
- await api('/workers/domains','PUT',{hostname:HOST,service:to,zone_id:ZONE});
- const result=await api('/workers/domains?per_page=100');
- verifyDomain(result,to);
- console.log('Owner domain route moved to '+to+' and independently verified; no Worker deployed');
+ // Cloudflare Attach returns 409 for a hostname still attached to another
+ // Worker. Remove exactly the previously verified source ID, read back the
+ // vacancy, and attach once. Never blindly repeat a possibly applied write.
+ const matches=entries=>entries.filter(x=>x.hostname===HOST);
+ const state=async()=>{
+  const hits=matches(await listDomain());
+  if(hits.length===0)return 'vacant';
+  if(hits.length!==1)fail('ambiguous Owner domain inventory');
+  const d=hits[0];
+  if(d.zone_id!==ZONE||d.enabled!==true||d.environment!=='production')
+   fail('Owner domain identity changed');
+  if(d.service===to)return 'target';
+  if(d.service===from)return 'source';
+  fail('unexpected Owner domain owner');
+ };
+ const attach=service=>api('/workers/domains','PUT',{hostname:HOST,service,zone_id:ZONE});
+ // Recovery is allowed only after a verified vacancy. Unknown route state
+ // must remain untouched for independent Owner review, never automatic retry.
+ const recover=async()=>{
+  const now=await state();
+  if(now==='target')return 'target';
+  if(now==='source')return 'source';
+  try{await attach(from);}catch{
+   const after=await state();
+   if(after==='source')return 'source';
+   fail('source route restoration rejected; manual recovery required');
+  }
+  if(await state()!=='source')
+   fail('source route restoration unverified; manual recovery required');
+  return 'source';
+ };
+ try{await api('/workers/domains/'+encodeURIComponent(domain),'DELETE');}
+ catch{
+  const after=await state();
+  if(after==='source')fail('domain detach rejected; source preserved');
+  if(after==='vacant'){
+   await recover();
+   fail('domain detach outcome unknown; source restored');
+  }
+  fail('domain detach outcome unknown; manual review required');
+ }
+ const vacant=await state();
+ if(vacant!=='vacant'){
+  if(vacant==='source')fail('domain detach not observed; source preserved');
+  fail('domain detach not observed; manual review required');
+ }
+ try{await attach(to);}
+ catch{
+  const recovered=await recover();
+  if(recovered==='target'){
+   console.log('Owner domain attached to '+to+' and independently verified after uncertain response');
+   return {target:to};
+  }
+  fail('target domain attach rejected; original source restored');
+ }
+ if(await state()!=='target'){
+  const recovered=await recover();
+  if(recovered==='target')return {target:to};
+  fail('target domain attach not verified; original source restored');
+ }
+ console.log('Owner domain moved to '+to+' and independently verified; no Worker deployed');
  return {target:to};
 }
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url)
