@@ -57,3 +57,23 @@ test('only a fully verified first handoff PUT changes Owner routing, with no ret
   assert.ok(calls.filter(x=>x.path.endsWith('/workers/domains')).length>=3);
  }
 });
+
+test('API denials report only fixed phase, HTTP and numeric error code',async()=>{
+ const opts={CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_API_TOKEN:'test-private-token',
+  ACTIONS_OLD_INGRESS_QUIESCED:'true',ACTIONS_OWNER_DOMAIN_APPROVED:'true',
+  ACTIONS_EXPECTED_RECEIPTS:'0',ACTIONS_DOMAIN_OPERATION:'transfer',ACTIONS_EXPECTED_PROVIDER_VERSION:id};
+ let requests=0;
+ const fake=async(url,init)=>{
+  requests++;assert.equal(init.method,'GET');
+  return {ok:false,status:403,json:async()=>({success:false,errors:[{
+   code:10000,message:'do-not-expose-authorization test-private-token'
+  }],result:null})};
+ };
+ await assert.rejects(()=>executeHandoff(opts,fake),error=>{
+  assert.equal(error.message,'Actions Owner domain blocked: Cloudflare request rejected (stage=domain_inventory,http=403,code=10000)');
+  assert.ok(!error.message.includes('do-not-expose'));
+  assert.ok(!error.message.includes('test-private-token'));
+  return true;
+ });
+ assert.equal(requests,1);
+});
