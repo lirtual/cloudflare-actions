@@ -129,3 +129,14 @@ circumvention or duplicate create; EnvShare and Litterbox are separate
 unimplemented acceptance stages. No DuckDuckMail. Preserve existing
 Weixin/Bark digests and fallback, and use only the existing protected
 release path for any subsequent production change.
+
+
+## Spec #35 · EnvShare follow-on boundary (NOT runnable)
+
+EnvShare has a distinct ciphertext-only acceptance stage. Current Workflow
+Run inputs and outputs are durable in D1: a normal `inputs.text` would
+persist plaintext, and a normal full `unseal#...` Action output would
+persist its decryption key. No EnvShare Handler is registered or deployed.
+See `docs/spec-35-envshare-boundary.md` for the verified upstream v2
+crypto contract, proposed ephemeral key delivery, replay-loss tradeoff
+and required tests. Do not reuse the cancelled CandyBox Worker/PR.
