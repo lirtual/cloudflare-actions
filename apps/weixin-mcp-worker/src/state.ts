@@ -10,13 +10,6 @@ export type SendReply = {
 };
 export type RejectedSend={status:'rejected';upstream_ret:number|null;upstream_errcode:number|null};
 export type Dispatcher=(session:IlinkSession,text:string,requestId:string)=>Promise<SendStatus|RejectedSend>;
-// Conservative local preflight, not an asserted upstream token TTL.
-export const MAX_OWNER_CONTEXT_AGE_SECONDS=24*60*60;
-function requireFreshOwnerContext(binding:Binding,now:number):void{
- const ts=binding.last_verified_context_at;
- if(!Number.isSafeInteger(ts)||ts===null||ts<=0||ts>now||now-ts>MAX_OWNER_CONTEXT_AGE_SECONDS)
-  fail('owner_context_stale');
-}
 function boundedCode(n:unknown):number|null{
  return typeof n==='number'&&Number.isSafeInteger(n)&&Math.abs(n)<=999999999?n:null;
 }
@@ -91,12 +84,11 @@ export async function sendOnce(env:Env,text:string,requestId:string,dispatch:Dis
     if(!binding||binding.state!=='ready'||!binding.session_ciphertext||!binding.session_key_id)
       fail('binding_not_ready');
   }
-  // A successful poll alone does not refresh an old Owner context.
-  // Stop before reservation, and recheck while holding the binding lease.
-  requireFreshOwnerContext(binding,Math.floor(Date.now()/1000));
+  // A successful trusted sync is sufficient for an unattended notification.
+  // No arbitrary local Owner-message age cutoff; the verified, encrypted
+  // Owner binding and current-generation lease still fence the send.
   const lease=await acquireLease(env,binding.generation,['ready']);
   try {
-  requireFreshOwnerContext(await readUnderLease(env,lease),Math.floor(Date.now()/1000));
   // Durable, atomic claim BEFORE sending. This insert reads the current
   // binding generation in the same SQL statement (never a SELECT+INSERT pair).
   const claim=await env.DB.prepare(
