@@ -88,3 +88,31 @@ not proof the unsupported anonymous Dub endpoint still works in production.
 An actual link creation/readback and Provider/Workflow protected releases need
 separate explicit authorization. This is not an independent Worker/publisher,
 not an MCP tool, and not a revival of cancelled CandyBox MCP #325.
+
+### Spec #35 · Dub post-create redirect integrity gate (source-only remediation)
+
+The first production anonymous Dub Run was accepted exactly once, but an
+independent HEAD+GET read initially returned a 302 Location lacking the entire
+original query, and a later read returned 307 to Dub's links page with a
+public `Link Not Found`. Upstream's reviewed process-link/create-link code and
+get-final-url middleware intend to preserve destination query. This does not
+establish which upstream layer changed the saved destination or removed the
+link; the anonymous header is not a guaranteed public REST contract.
+
+**Fail-closed remedy:** after one successful anonymous POST, verify the exact
+validated `dub.sh` short link using one bounded HEAD with `redirect:manual`.
+Only 301/302/303/307/308 with an exact original target Location (including
+query) can produce `accepted`. Errors, missing/mismatched Location, unexpected
+status, HEAD timeout and the later Dub 307 not-found transition return
+`unknown`. Never repeat POST or follow the Location / fetch an arbitrary
+third-party target. A HEAD success is only a point-in-time integrity proof,
+not an uptime/durability guarantee. Consumer uses its *unchanged* original
+Contract Digest and immutable Published Versions; it does not need new source.
+
+This source change and its stub-based workerd tests are **not** production
+verification, and must not be deployed by direct Wrangler/manual API calls.
+A later reviewed protected Provider upgrade will change the Version ID;
+first pause/freeze/drain, then use the existing release workflow, repin the
+Workflow Consumer and affected Published Plans, and restore existing users.
+One separate authorized anonymous create/readback is needed for real acceptance;
+never retry the earlier “unknown” or previously completed invocation.
