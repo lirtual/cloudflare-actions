@@ -107,7 +107,7 @@ test('unified publisher is guarded, Owner-only and never switches domain automat
  for(const s of ["github.ref == 'refs/heads/main'","github.actor == 'lirtual'",
   'inputs.deploy_to_production == true','inputs.actions_old_ingress_quiesced == true',
   'cancel-in-progress: false',
-  'BARK_DEVICE_KEY: ${{ secrets.BARK_DEVICE_KEY }}',
+  'BARK_DEVICE_KEY: ${{ vars.BARK_DEVICE_KEY }}',
   'BARK_ENCRYPTION_KEY: ${{ secrets.BARK_ENCRYPTION_KEY }}',
   'node scripts/actions-protected-release.mjs preflight',
   'node scripts/actions-protected-release.mjs secrets',
@@ -115,6 +115,7 @@ test('unified publisher is guarded, Owner-only and never switches domain automat
   'wrangler deploy --secrets-file'])assert.ok(workflow.includes(s),s);
  assert.ok(!/^\s+environment:/m.test(workflow),'first release uses repository Actions Secrets without an Environment');
  assert.ok(!workflow.includes('secrets.WEIXIN_ENCRYPTION_KEY'),'fresh Weixin key must not depend on repository Secrets');
+ assert.ok(!workflow.includes('secrets.BARK_DEVICE_KEY'),'Bark routing key is the explicitly configured repository Variable');
  assert.ok(workflow.indexOf('actions-protected-release.mjs preflight')<workflow.indexOf('wrangler deploy --secrets-file'));
  assert.ok(!workflow.includes('wrangler d1 execute')&&!workflow.includes('wrangler delete'));
 });
