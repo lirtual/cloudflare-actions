@@ -44,10 +44,15 @@ export function createActionDispatcher(env:Env){
    const normal=ACTION_CATALOG[action];
    const digest=action==='weixin.send_text'?
      await providerIdentity(env,normal):null;
+   // A requested digest selects that exact reviewed contract, never a fallback.
+   // Without a digest, weixin.send_text advertises the current v3 contract;
+   // the original v1 remains available only to callers pinning its digest.
    const manifest=action==='weixin.send_text'&&contract_digest!==digest?.contract_digest?
       UNIFIED_GENERIC_MANIFEST:normal;
    const identity=action!=='bark.send_notification'
     ?await providerIdentity(env,manifest):await barkContract(env,manifest);
+   if(contract_digest!==undefined&&contract_digest!==identity.contract_digest)
+    throw new Error('unknown_contract');
    return {...identity,manifest};
   },
   async execute(action_id:string,invocation:unknown){

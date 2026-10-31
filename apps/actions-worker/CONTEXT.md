@@ -30,7 +30,33 @@ executor, new storage, or public send endpoint is permitted.
 **Status (2026-10-31):** the unified Worker, protected producer/consumer
 releases, domain transfer, fresh Owner QR/proof pairing, source receipt
 preservation and both Weixin/Bark single-shot physical handset E2E are
-verified. Six original business Workflows remain paused pending exact-grant
-republish and deliberate resume; legacy Worker/publisher retirement is not
-performed. Prior source-only preflight history is retained in
-`docs/spec-21-cutover.md`.
+verified. Five of six original business Workflows have been republished and resumed;
+`chrome` remains paused after its update was blocked by the platform.
+Legacy Worker/publisher retirement is not performed; the old Weixin Worker
+remains a reviewed physical Owner-domain fallback. Prior cutover history
+is retained in `docs/spec-21-cutover.md`.
+
+## Adding another logical Cloudflare Action
+
+1. Keep the existing `cloudflare-actions` Worker and private `ACTIONS` binding.
+   Add a small source-reviewed Handler with a bounded input/output contract,
+   fixed destination and independent credential checks. Do not provide a new
+   public send endpoint, runtime-loaded plugin, or general HTTP executor.
+2. Register its Action ID and immutable manifest in `src/dispatch.ts`,
+   explicitly routing `execute`, `getContract` and any supported read-only
+   receipt/binding operations. Omit unsupported methods by rejecting them;
+   absence of a published digest is not authority to execute.
+3. Mirror the exact reviewed manifest in Workflow's static compiler and
+   execution path. Discovery must never implicitly authorize an Action.
+   `getContract(id, digest)` must return that exact reviewed digest or reject;
+   calls without a digest advertise the current version. Keep prior immutable
+   contract digests available only where historical compatibility requires.
+4. Add unit/workerd regressions for catalog identity, side-effect denial,
+   input bounds, credential isolation and any indeterminate upstream outcome.
+   Verify matching producer/consumer digest, then use the existing CI and
+   manually approved `release-actions.yml` publisher. Do not add another
+   Worker, Service Binding, deploy workflow, Registry database or scheduler.
+5. Since all Actions share one Worker Version ID, a live upgrade requires
+   explicit maintenance authorization, frozen admission, drained Runs,
+   reviewed version pins and a controlled reopening of business Workflows.
+   A successful CI or merge never publishes production code automatically.

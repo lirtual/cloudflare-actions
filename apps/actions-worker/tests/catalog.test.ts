@@ -42,3 +42,34 @@ test('one Action ID has distinct explicit v1 and default v3 RPC contracts',async
  assert.notEqual(legacy.contract_digest,current.contract_digest);
  assert.equal((await dispatcher.listActions()).length,3);
 });
+
+test('existing production contract digests stay immutable when extending the catalog',async()=>{
+ const dispatcher=actions();
+ const reviewed={
+  'bark.send_notification':'937384e390cc9b90af734405569a0ca25fd6f3784aa15c0e7e276067f16f845c',
+  'weixin.send_text':'eb216c39778bf7f20a39c8ae63874ac1dec2fbeb75bb1ea36b981267cec4ff4e',
+  'weixin.notify_download':'384df0ae612b825b4f4544b1bc86fd9890daaa4c4f5813b29ca8396b36655fea',
+ };
+ for(const [id,digest] of Object.entries(reviewed)){
+  assert.equal((await dispatcher.getContract(id)).contract_digest,digest);
+ }
+ const {ACTION_CATALOG}=await import('../src/dispatch.ts');
+ const {providerIdentity}=await import('../../weixin-mcp-worker/src/provider.ts');
+ const v1=await providerIdentity({CF_VERSION_METADATA:{id:version}} as never,ACTION_CATALOG['weixin.send_text']);
+ assert.equal(v1.contract_digest,'09af0f808901af3077411d8b5843659188d5a42cd983a3b0efc6b3700adffc67');
+});
+
+test('contract lookup is exact and fails closed for unknown or malformed digests',async()=>{
+ const dispatcher=actions();
+ for(const actionId of ['bark.send_notification','weixin.notify_download','weixin.send_text']){
+  const current=await dispatcher.getContract(actionId);
+  assert.deepEqual(await dispatcher.getContract(actionId,current.contract_digest),current);
+  for(const unsupported of ['0'.repeat(64),'invalid','']){
+   await assert.rejects(()=>dispatcher.getContract(actionId,unsupported),/unknown_contract/);
+  }
+ }
+ const {ACTION_CATALOG}=await import('../src/dispatch.ts');
+ const {providerIdentity}=await import('../../weixin-mcp-worker/src/provider.ts');
+ const old=await providerIdentity({CF_VERSION_METADATA:{id:version}} as never,ACTION_CATALOG['weixin.send_text']);
+ assert.equal((await dispatcher.getContract('weixin.send_text',old.contract_digest)).manifest.version,1);
+});

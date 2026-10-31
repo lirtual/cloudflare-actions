@@ -7,10 +7,12 @@
 > routes to the new Worker. Weixin handset and Bark iPhone AES-GCM plaintext-read
 > acceptance passed as two distinct one-shot tests. The original Weixin D1
 > retained 19 receipts, including historical Unknown outcomes.
-> **Six existing business Workflows remain paused**, pending reviewed contract
-> updates, new Published Versions and controlled resumption. The two legacy
-> Workers and their manual publishers remain deployed but are not the current
-> Workflow notification binding; retirement requires separate authorization.
+> **Five of six business Workflows are republished and active**; `chrome`
+> remains paused because its production update was blocked by platform safety
+> controls. Both legacy Workers and manual publishers remain deployed but are
+> not the current Workflow notification binding. The old Weixin Worker is still
+> an explicit physical Owner-domain rollback target; retirement requires
+> separate authorization and a compatible fallback decision.
 > Some sections below describe the **legacy** topology and release procedures,
 > not the new authoritative production path. See
 > [current migration/acceptance status](docs/spec-21-cutover.md),
