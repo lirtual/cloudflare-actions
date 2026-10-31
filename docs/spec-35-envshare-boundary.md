@@ -1,7 +1,9 @@
 # Spec #35 — EnvShare data boundary (source-only design, not an enabled Action)
 
-Status: **design / offline protocol verification only**. No EnvShare Action
-is published in the static Catalog; no third-party storage or read was performed.
+Status: **Provider and Workflow Consumer source staged, CI pending; no production release**.
+The source-reviewed EnvShare Action is registered in the staged Catalog, but
+the live production Worker/Workflow do not contain these unmerged changes.
+No third-party storage or read was performed.
 This is a **new Cloudflare Actions stage**, not a revival of cancelled
 `lirtual/mcp-workers#325`.
 
@@ -27,7 +29,7 @@ This is a **new Cloudflare Actions stage**, not a revival of cancelled
   `GET /api/v1/load?id=<id>` consumes a read, so a 1-read share
   must **not** be casually read back while testing.
 
-## Minimum viable data flow — proposed, not yet published
+## Implemented source-only data flow — not published
 
 1. Only a reviewed **manual one-shot** `envshare.share_text` Plan may
    accept a bounded plaintext input (default 24h, one read, <=16 KiB
@@ -44,14 +46,16 @@ This is a **new Cloudflare Actions stage**, not a revival of cancelled
    **id/status only**, never a full URL or key, into the normal
    Workflow step/run results. Apply the existing Contract Digest,
    Provider Version grant, cancellation and durable at-most-once fence.
-4. Deliver the secret key **only through a non-persisting response** to
-   the requesting client, then combine it with the confirmed returned
-   ID to form the URL **outside normal Workflow persistence**. A
-   narrowly scoped transient completion path in the existing Workflow
-   API is one possible approach; it requires source review and real
-   client/tool-response verification before implementation. The key
-   may appear in the user-facing ChatGPT conversation by the nature
-   of handing the resulting URL to the user; it must not enter D1,
+4. Return the secret key **only in the first** `workflow_run` response
+   (`delivery_key`), never as a durable value. The client later supplies
+   that key to `workflow_result(run_id,delivery_key)` to combine it with
+   the confirmed `share_id`; the server checks a durable SHA-256 verifier
+   of the random 128-bit key and produces `share_url` **without a D1 write**.
+   A key passed to `workflow_result` is not permission to create anything.
+   Real ChatGPT tool-response/URL-delivery verification is still required.
+   The key
+   appears in the user-facing ChatGPT conversation and MCP tool responses
+   by the nature of handing the resulting URL to the user; it must not enter D1,
    Worker logs or third-party store payloads.
 5. If a Run admission reply containing the transient key is lost, the
    key is intentionally **unrecoverable** from D1; a resumed/replayed
@@ -81,9 +85,11 @@ This is a **new Cloudflare Actions stage**, not a revival of cancelled
   safety gates. Any source PR/CI is not authorization to deploy or
   perform a real third-party POST.
 
-**Current decision boundary:** A normal Workflow Run cannot meet the
-privacy contract. Do not register `envshare.share_text` as runnable
-until the transient delivery mechanism is proven end-to-end. The
+**Current decision boundary:** Existing production Workflow Runs cannot meet
+the privacy contract. The new special-case source path addresses D1 input
+and result persistence, but must not be deployed or advertised as live until
+protected rollout and real ChatGPT transient delivery E2E are authorized and
+verified. The
 Client-side pre-encryption alternative also avoids D1 secrets, but
 would require a verified native client encryption capability; do not
 pretend this is already provided by ChatGPT.

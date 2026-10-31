@@ -136,7 +136,11 @@ release path for any subsequent production change.
 EnvShare has a distinct ciphertext-only acceptance stage. Current Workflow
 Run inputs and outputs are durable in D1: a normal `inputs.text` would
 persist plaintext, and a normal full `unseal#...` Action output would
-persist its decryption key. No EnvShare Handler is registered or deployed.
+persist its decryption key. The EnvShare Handler is now staged in source, **not deployed**. Workflow
+source additionally encrypts before D1 and returns a random key only in the
+first `workflow_run` tool response; a later `workflow_result` with that key
+constructs the URL without persistence. Source/CI is not live ChatGPT
+acceptance, and a separately approved protected rollout is mandatory.
 See `docs/spec-35-envshare-boundary.md` for the verified upstream v2
 crypto contract, proposed ephemeral key delivery, replay-loss tradeoff
 and required tests. Do not reuse the cancelled CandyBox Worker/PR.
