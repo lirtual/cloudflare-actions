@@ -26,35 +26,74 @@ test('domain handoff is an independent manual main-only job, not a Worker deploy
  assert.ok(!job.includes('wrangler deploy'));
  assert.ok(yaml.includes("inputs.domain_operation == 'none'"));
 });
-test('only a fully verified first handoff PUT changes Owner routing, with no retry on unknown response',async()=>{
- const version=id,token='test';
- const opts={CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_API_TOKEN:token,ACTIONS_OLD_INGRESS_QUIESCED:'true',ACTIONS_OWNER_DOMAIN_APPROVED:'true',ACTIONS_EXPECTED_RECEIPTS:'0',ACTIONS_DOMAIN_OPERATION:'transfer',ACTIONS_EXPECTED_PROVIDER_VERSION:version};
- const settings={bindings:[{name:'DB',type:'d1',id:'051c3b6d-e3bc-4d69-907f-37e8ab00618f'},...['WEIXIN_ENCRYPTION_KEY','BARK_DEVICE_KEY','BARK_ENCRYPTION_KEY'].map(name=>({name,type:'secret_text'})),{name:'ADMIN_HOST',type:'plain_text',text:'weixin.lirtual.dpdns.org'},{name:'CF_VERSION_METADATA',type:'version_metadata'}]};
+test('guarded detach and attach uses exact source ID, readback and one target write',async()=>{
+ const opts={CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_API_TOKEN:'test',
+  ACTIONS_OLD_INGRESS_QUIESCED:'true',ACTIONS_OWNER_DOMAIN_APPROVED:'true',
+  ACTIONS_EXPECTED_RECEIPTS:'0',ACTIONS_DOMAIN_OPERATION:'transfer',ACTIONS_EXPECTED_PROVIDER_VERSION:id};
+ const settings={bindings:[{name:'DB',type:'d1',id:'051c3b6d-e3bc-4d69-907f-37e8ab00618f'},
+  ...['WEIXIN_ENCRYPTION_KEY','BARK_DEVICE_KEY','BARK_ENCRYPTION_KEY'].map(name=>({name,type:'secret_text'})),
+  {name:'ADMIN_HOST',type:'plain_text',text:'weixin.lirtual.dpdns.org'},{name:'CF_VERSION_METADATA',type:'version_metadata'}]};
  const secrets=['WEIXIN_ENCRYPTION_KEY','BARK_DEVICE_KEY','BARK_ENCRYPTION_KEY'].map(name=>({name}));
  const native={success:true,result:[],result_info:{count:0,total_count:0}};
- const owner={state:'unbound',generation:2,session_ciphertext:null,session_key_id:null,lease_holder:null,lease_until:null,pending_pairings:0,receipt_count:0};
- for(const rejectWrite of [false,true]){
-  let service='weixin-mcp-worker',writes=0;const calls=[];
+ const owner={state:'unbound',generation:2,session_ciphertext:null,session_key_id:null,
+  lease_holder:null,lease_until:null,pending_pairings:0,receipt_count:0};
+ const fixture=(scenario='success')=>{
+  let service='weixin-mcp-worker',writes=[],lists=0;
   const fake=async(url,init)=>{
-   const path=new URL(url).pathname,method=init.method||'GET';calls.push({path,method});
-   if(path.endsWith('/instances'))return {ok:true,json:async()=>native};
+   const u=new URL(url),path=u.pathname,method=init.method||'GET';
+   if(path.endsWith('/instances'))return {ok:true,status:200,json:async()=>native};
+   if(path.endsWith('/workers/domains')&&method==='GET'){
+    lists++;const view=scenario==='stale-read-after-detach'&&service===null?'weixin-mcp-worker':service;
+    return {ok:true,status:200,json:async()=>({success:true,result:view?[domain(view)]:[]})};
+   }
+   if(path.endsWith('/workers/domains/'+domain('').id)&&method==='DELETE'){
+    writes.push('DELETE');
+    if(scenario==='delete-refused')return {ok:false,status:403,json:async()=>({success:false,errors:[{code:10000}]})};
+    service=null;
+    if(scenario==='delete-unknown')return {ok:false,status:503,json:async()=>({success:false,result:null,errors:[{code:10001}]})};
+    return {ok:true,status:204,json:async()=>{throw Error('204 must not parse JSON')}};
+   }
    if(path.endsWith('/workers/domains')&&method==='PUT'){
-    writes++;if(rejectWrite)return {ok:false,status:503};
-    const payload=JSON.parse(init.body);assert.equal(payload.hostname,'weixin.lirtual.dpdns.org');assert.equal(payload.service,'cloudflare-actions');service=payload.service;
+    const payload=JSON.parse(init.body);writes.push('PUT:'+payload.service);
+    assert.equal(payload.hostname,'weixin.lirtual.dpdns.org');
+    assert.equal(payload.zone_id,'36c4f02ddad481e5245b5f31a91f7222');
+    if(payload.service==='cloudflare-actions'&&['target-refused','restore-refused'].includes(scenario))
+     return {ok:false,status:409,json:async()=>({success:false,errors:[{code:100116}]})};
+    if(payload.service==='weixin-mcp-worker'&&scenario==='restore-refused')
+     return {ok:false,status:503,json:async()=>({success:false,errors:[]})};
+    service=payload.service;
+    if(payload.service==='cloudflare-actions'&&scenario==='target-unknown')
+     return {ok:false,status:503,json:async()=>({success:false,errors:[]})};
+    return {ok:true,status:200,json:async()=>({success:true,result:{id:domain(service).id}})};
    }
    let result;
-   if(path.endsWith('/workers/domains'))result=method==='PUT'?{id:domain(service).id}:[domain(service)];
-   else if(path.endsWith('/query'))result=path.includes('a4a477cd')?[{success:true,results:[frozen]}]:[{success:true,results:[owner]}];
-   else if(path.endsWith('/deployments'))result={deployments:[{versions:[{version_id:version,percentage:100}]}]};
+   if(path.endsWith('/query'))result=path.includes('a4a477cd')?[{success:true,results:[frozen]}]:[{success:true,results:[owner]}];
+   else if(path.endsWith('/deployments'))result={deployments:[{versions:[{version_id:id,percentage:100}]}]};
    else if(path.endsWith('/settings'))result=settings;
    else if(path.endsWith('/secrets'))result=secrets;
-   else throw Error('unexpected path: '+path);
-   return {ok:true,json:async()=>({success:true,result})};
+   else throw Error('unexpected path');
+   return {ok:true,status:200,json:async()=>({success:true,result})};
   };
-  if(rejectWrite)await assert.rejects(()=>executeHandoff(opts,fake),/blocked/);
-  else assert.deepEqual(await executeHandoff(opts,fake),{target:'cloudflare-actions'});
-  assert.equal(writes,1);
-  assert.ok(calls.filter(x=>x.path.endsWith('/workers/domains')).length>=3);
+  return {fake,writes,view:()=>service,lists:()=>lists};
+ };
+ for(const scenario of ['success','target-unknown']){
+  const f=fixture(scenario);
+  assert.deepEqual(await executeHandoff(opts,f.fake),{target:'cloudflare-actions'});
+  assert.deepEqual(f.writes,['DELETE','PUT:cloudflare-actions']);
+  assert.equal(f.view(),'cloudflare-actions');
+  assert.ok(f.lists()>=4);
+ }
+ for(const [scenario,expected,final] of [
+  ['delete-refused',['DELETE'],'weixin-mcp-worker'],
+  ['delete-unknown',['DELETE','PUT:weixin-mcp-worker'],'weixin-mcp-worker'],
+  ['target-refused',['DELETE','PUT:cloudflare-actions','PUT:weixin-mcp-worker'],'weixin-mcp-worker'],
+  ['stale-read-after-detach',['DELETE'],null],
+  ['restore-refused',['DELETE','PUT:cloudflare-actions','PUT:weixin-mcp-worker'],null]
+ ]){
+  const f=fixture(scenario);
+  await assert.rejects(()=>executeHandoff(opts,f.fake),/blocked/);
+  assert.deepEqual(f.writes,expected);
+  assert.equal(f.view(),final);
  }
 });
 

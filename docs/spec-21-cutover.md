@@ -139,6 +139,31 @@ encrypted Session does not revive on rollback: Owner QR re-pair may still be
 necessary. Domain routing alone does not start or resume a Workflow, change
 D1 admission or send an Action.
 
+## Owner-approved existing Custom Domain move (2026-10-31)
+
+Cloudflare `PUT /workers/domains` returned HTTP 409 code 100116 while the
+hostname was attached to the original Worker; it cannot be treated as an
+atomic domain move. The Owner separately approved a short maintenance
+interruption and a reviewed **detach + attach** through the existing
+Owner-only GitHub Actions handoff job (never direct Cloudflare CLI/API).
+
+The job retains the frozen D1 gate, six paused Plans, all six native instance
+status checks, exact single Provider Version, unbound old Owner and the
+historical receipt baseline. It independently verifies the exact source
+Custom Domain ID immediately before one DELETE, confirms the hostname
+is vacant before one target PUT, and independently verifies the new route.
+If target attach fails or its response is ambiguous, it only attempts a
+single restore of the source after *proving the hostname vacant*; if the
+target is already verified, no retry occurs. Unknown or conflicting
+routing state is never overwritten. Even a verified source restoration
+cannot recreate the old Weixin session. Failed restoration requires manual
+recovery, not a second automatic mutation.
+
+Detach may interrupt DNS, TLS and Access-protected Owner traffic. Route
+readback is necessary, not sufficient for HTTPS / Access / QR acceptance;
+scan and owner proof must be performed after routing is confirmed, and
+the six Workflows stay paused until genuine end-to-end acceptance.
+
 ## Current release decision
 
 **NO-GO for production** until trusted fresh-key provisioning and Owner
