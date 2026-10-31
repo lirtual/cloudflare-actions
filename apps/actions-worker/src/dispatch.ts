@@ -6,10 +6,12 @@ import {ACTION_MANIFEST as BARK_MANIFEST,getContract as barkContract,
  sendNotification,type Invocation} from '../../bark-provider/src/notification.ts';
 import type {Env as WeixinEnv} from '../../weixin-mcp-worker/src/types.ts';
 import type {Env as BarkEnv} from '../../bark-provider/src/notification.ts';
+import {DUB_MANIFEST,shortenDub} from './dub.ts';
 
 export type Env=WeixinEnv & BarkEnv;
 // Build-time, reviewed catalog: no runtime configuration or dynamic imports.
 export const ACTION_CATALOG=Object.freeze({
+ 'dub.shorten_url':DUB_MANIFEST,
  'bark.send_notification':Object.freeze({...BARK_MANIFEST,
    service:'cloudflare-actions',entrypoint:'ActionsEntrypoint'}),
  'weixin.send_text':Object.freeze({...WEIXIN_MANIFEST,
@@ -49,7 +51,7 @@ export function createActionDispatcher(env:Env){
    // the original v1 remains available only to callers pinning its digest.
    const manifest=action==='weixin.send_text'&&contract_digest!==digest?.contract_digest?
       UNIFIED_GENERIC_MANIFEST:normal;
-   const identity=action!=='bark.send_notification'
+   const identity=action!=='bark.send_notification'&&action!=='dub.shorten_url'
     ?await providerIdentity(env,manifest):await barkContract(env,manifest);
    if(contract_digest!==undefined&&contract_digest!==identity.contract_digest)
     throw new Error('unknown_contract');
@@ -59,6 +61,7 @@ export function createActionDispatcher(env:Env){
    const action=registered(action_id);
    if(!invocation||typeof invocation!=='object'||Array.isArray(invocation))
     throw new Error('invalid_invocation');
+   if(action==='dub.shorten_url')return shortenDub(env,invocation as Parameters<typeof shortenDub>[1]);
    return action==='weixin.send_text'
     ?((await providerIdentity(env,UNIFIED_GENERIC_MANIFEST)).contract_digest===
       (invocation as GenericInvocation).contract_digest
@@ -69,11 +72,11 @@ export function createActionDispatcher(env:Env){
     :sendNotification(env,invocation as Invocation,undefined,ACTION_CATALOG[action]);
   },
   async getReceipt(action_id:string,query:unknown){
-   if(registered(action_id)==='bark.send_notification')throw new Error('receipt_not_supported');
+   if(registered(action_id)!=='weixin.send_text'&&action_id!=='weixin.notify_download')throw new Error('receipt_not_supported');
    return readActionReceipt(env,query as ReceiptQuery);
   },
   async getBinding(action_id:string){
-   if(registered(action_id)==='bark.send_notification')throw new Error('binding_not_supported');
+   if(registered(action_id)!=='weixin.send_text'&&action_id!=='weixin.notify_download')throw new Error('binding_not_supported');
    return bindingIdentity(env);
   },
  };
