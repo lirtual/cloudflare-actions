@@ -31,14 +31,37 @@ on:
         type: string
         required: false
       expected_receipts:
-        description: Exact historical Weixin receipt count recorded before old Owner unbind
+        description: Exact historical Weixin receipt count for first cutover or reviewed maintenance
         type: string
         required: true
+      maintenance_operation:
+        description: 'No maintenance, reviewed Worker upgrade, or explicit version rollback'
+        type: choice
+        required: true
+        default: none
+        options:
+          - none
+          - upgrade
+          - rollback
+      maintenance_approved:
+        description: Separate Owner production authorization for one maintenance operation
+        type: boolean
+        required: true
+        default: false
+      maintenance_quiesced:
+        description: Owner verified all business Workflows paused, gate frozen and existing Runs drained
+        type: boolean
+        required: true
+        default: false
+      rollback_target_version:
+        description: Exact reviewed previous Worker version (required only for rollback)
+        type: string
+        required: false
 permissions:
   contents: read
 jobs:
   release:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == 'lirtual' && inputs.deploy_to_production == true && inputs.actions_old_ingress_quiesced == true && inputs.domain_operation == 'none' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == 'lirtual' && inputs.deploy_to_production == true && inputs.actions_old_ingress_quiesced == true && inputs.domain_operation == 'none' && inputs.maintenance_operation == 'none' }}
     runs-on: ubuntu-latest
     concurrency:
       group: cloudflare-actions-production
@@ -108,7 +131,7 @@ jobs:
       ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
           github.actor == 'lirtual' && inputs.deploy_to_production == false &&
           inputs.actions_old_ingress_quiesced == true && inputs.owner_domain_approved == true &&
-          (inputs.domain_operation == 'transfer' || inputs.domain_operation == 'rollback') }}
+          (inputs.domain_operation == 'transfer' || inputs.domain_operation == 'rollback') && inputs.maintenance_operation == 'none' }}
     runs-on: ubuntu-latest
     concurrency:
       group: cloudflare-actions-production
@@ -147,3 +170,104 @@ jobs:
           ACTIONS_DOMAIN_OPERATION: ${{ inputs.domain_operation }}
           ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
         run: node scripts/actions-owner-domain-handoff.mjs
+
+  protected-maintenance:
+    name: Reviewed existing Worker upgrade or exact-version rollback
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+          github.actor == 'lirtual' && inputs.deploy_to_production == false &&
+          inputs.actions_old_ingress_quiesced == false && inputs.domain_operation == 'none' &&
+          inputs.maintenance_approved == true && inputs.maintenance_quiesced == true &&
+          (inputs.maintenance_operation == 'upgrade' || inputs.maintenance_operation == 'rollback') }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: cloudflare-actions-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require exact reviewed current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_ACTOR" == 'lirtual' && "$GITHUB_REF" == 'refs/heads/main' ]]
+          [[ "$GITHUB_SHA" == "$(git rev-parse HEAD)" ]]
+          [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Check source, immutable contract and maintenance gate offline
+        run: pnpm run check
+      - name: Inspect current version, immutable Secrets, private binding and drained frozen Workflow
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
+          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
+          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
+          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
+          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
+        run: node scripts/actions-protected-upgrade.mjs preflight
+      - name: Publish one reviewed maintenance operation without touching Secrets, D1 or Owner route
+        id: publish
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
+          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
+          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
+          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
+          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
+          node scripts/actions-protected-upgrade.mjs preflight
+          umask 077
+          log_file="$(mktemp)"
+          chmod 600 "$log_file"
+          trap 'rm -f "$log_file"' EXIT
+          if [[ "$ACTIONS_MAINTENANCE_OPERATION" == 'upgrade' ]]; then
+            if ! (cd apps/actions-worker && pnpm exec wrangler deploy --keep-vars) >"$log_file" 2>&1; then
+              echo 'Unified Worker upgrade outcome requires independent readback; never blindly retry' >&2
+              exit 1
+            fi
+            version="$(node scripts/actions-protected-release.mjs version "$log_file")"
+          elif [[ "$ACTIONS_MAINTENANCE_OPERATION" == 'rollback' ]]; then
+            if ! (cd apps/actions-worker && pnpm exec wrangler rollback "$ACTIONS_ROLLBACK_TARGET_VERSION" --message "Owner-approved Spec 21 rollback") >"$log_file" 2>&1; then
+              echo 'Unified Worker rollback outcome requires independent readback; never blindly retry' >&2
+              exit 1
+            fi
+            version="$ACTIONS_ROLLBACK_TARGET_VERSION"
+          else
+            echo 'Unsupported production maintenance operation' >&2
+            exit 1
+          fi
+          EXPECTED_VERSION_ID="$version" node scripts/actions-protected-upgrade.mjs verify-new
+          echo "version_id=$version" >> "$GITHUB_OUTPUT"
+      - name: Independently read back version, original D1, Secret names and quiesced Workflow
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          EXPECTED_VERSION_ID: ${{ steps.publish.outputs.version_id }}
+          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
+          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
+          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
+          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
+          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
+        run: |
+          node scripts/actions-release-guard.mjs readback
+          node scripts/actions-protected-upgrade.mjs postflight

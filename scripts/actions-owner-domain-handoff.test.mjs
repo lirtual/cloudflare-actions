@@ -21,7 +21,7 @@ test('missing explicit approval prevents even a Cloudflare read',async()=>{
 });
 test('domain handoff is an independent manual main-only job, not a Worker deploy',()=>{
  const yaml=readFileSync(new URL('../.github/workflows/release-actions.yml',import.meta.url),'utf8');
- const job=yaml.slice(yaml.indexOf('\n  owner-domain-handoff:'));
+ const job=yaml.slice(yaml.indexOf('\n  owner-domain-handoff:'),yaml.indexOf('\n  protected-maintenance:'));
  for(const x of ["github.actor == 'lirtual'", "github.ref == 'refs/heads/main'", 'inputs.deploy_to_production == false', 'inputs.owner_domain_approved == true', 'group: cloudflare-actions-production','actions-owner-domain-handoff.mjs'])assert.ok(job.includes(x),x);
  assert.ok(!job.includes('wrangler deploy'));
  assert.ok(yaml.includes("inputs.domain_operation == 'none'"));
