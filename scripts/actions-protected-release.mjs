@@ -1,6 +1,7 @@
 // First unified Worker publisher: source-verified, fail-closed, read-only preflight.
 // No migration, owner unbind, domain transfer or external notification occurs here.
 import {readFile,writeFile} from 'node:fs/promises';
+import {randomBytes} from 'node:crypto';
 import {resolve,join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {checkOwnerCutover} from './actions-owner-cutover-readback.mjs';
@@ -39,6 +40,9 @@ export function verifyLegacyBindings(bindings){
   stop('existing Workflow Action Service Binding topology drift');
  return true;
 }
+// First release only: new encryption identity, generated on the authorized release Runner.
+// Its byte value is never written to GitHub logs or stored in repository source.
+export const generateFreshWeixinKey=()=>randomBytes(32).toString('base64');
 export function validatedSecrets(env){
  const weixin=env.WEIXIN_ENCRYPTION_KEY,device=env.BARK_DEVICE_KEY,bark=env.BARK_ENCRYPTION_KEY;
  if(typeof weixin!=='string'||!/^[A-Za-z0-9+/]{43}=$/.test(weixin)||
@@ -103,7 +107,8 @@ async function main(){
  }else if(mode==='secrets'){
   const dir=process.env.RUNNER_TEMP;
   if(!dir||!arg||resolve(arg)!==join(resolve(dir),'actions-cutover-secrets.json'))stop('untrusted secret staging path');
-  const credentials=validatedSecrets(process.env);
+  const credentials=validatedSecrets({...process.env,
+   WEIXIN_ENCRYPTION_KEY:generateFreshWeixinKey()});
   await writeFile(arg,JSON.stringify(credentials),{flag:'wx',mode:0o600});
   console.log('Validated private Worker secrets staged without output');
  }else if(mode==='version'){
