@@ -8,8 +8,8 @@ const actions=()=>createActionDispatcher({CF_VERSION_METADATA:{id:version}} as n
 test('one private catalog exposes only the reviewed actions and versioned contracts',async()=>{
  const dispatcher=actions();
  assert.deepEqual((await dispatcher.listActions()).map(x=>x.action_id),
-  ['bark.send_notification','weixin.send_text','weixin.notify_download']);
- for(const actionId of ['bark.send_notification','weixin.send_text','weixin.notify_download']){
+  ['dub.shorten_url','bark.send_notification','weixin.send_text','weixin.notify_download']);
+ for(const actionId of ['dub.shorten_url','bark.send_notification','weixin.send_text','weixin.notify_download']){
   const result=await dispatcher.getContract(actionId);
   assert.equal(result.deployment_id,version);
   assert.match(result.contract_digest,/^[a-f0-9]{64}$/);
@@ -40,12 +40,13 @@ test('one Action ID has distinct explicit v1 and default v3 RPC contracts',async
  const legacy=await dispatcher.getContract('weixin.send_text',v1.contract_digest);
  assert.equal(legacy.manifest.version,1);
  assert.notEqual(legacy.contract_digest,current.contract_digest);
- assert.equal((await dispatcher.listActions()).length,3);
+ assert.equal((await dispatcher.listActions()).length,4);
 });
 
 test('existing production contract digests stay immutable when extending the catalog',async()=>{
  const dispatcher=actions();
  const reviewed={
+  'dub.shorten_url':'7affc30ef28efc869a264e6ad5b7bc86226991a15be5d59f5447f0ad26919a20',
   'bark.send_notification':'937384e390cc9b90af734405569a0ca25fd6f3784aa15c0e7e276067f16f845c',
   'weixin.send_text':'eb216c39778bf7f20a39c8ae63874ac1dec2fbeb75bb1ea36b981267cec4ff4e',
   'weixin.notify_download':'384df0ae612b825b4f4544b1bc86fd9890daaa4c4f5813b29ca8396b36655fea',

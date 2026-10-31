@@ -20,6 +20,14 @@ function fixture(caller){
     BARK_ENCRYPTION_KEY:'12345678901234567890123456789012'},
    outboundService:async request=>{
     external++;
+    if(request.url==='https://dub.co/api/links'){
+      assert.equal(request.headers.get('dub-anonymous-link-creation'),'1');
+      const body=await request.json();
+      assert.equal(body.domain,'dub.sh');
+      assert.equal(body.publicStats,false);
+      return Response.json({domain:'dub.sh',key:'Abc123',shortLink:'https://dub.sh/Abc123',
+       url:body.url,publicStats:false});
+    }
     assert.equal(request.url,'https://api.day.app/push');
     const envelope=await request.json();
     assert.equal(Object.hasOwn(envelope,'body'),false);
@@ -31,7 +39,7 @@ function fixture(caller){
  return {mf,external:()=>external};
 }
 
-test('one workerd binding exposes three reviewed contracts, historic receipts and no public send surface',async()=>{
+test('one workerd binding exposes four reviewed contracts, historic receipts and no public send surface',async()=>{
  const caller=`export default {async fetch(request,env){const q=new URL(request.url).searchParams;
    const action=q.get('action');try{
     if(q.has('list'))return Response.json(await env.ACTIONS.listActions());
@@ -47,8 +55,8 @@ test('one workerd binding exposes three reviewed contracts, historic receipts an
   const client=await mf.getWorker('caller');
   const get=path=>client.fetch('https://caller.example/'+path);
   const listed=await(await get('?list=1')).json();
-  assert.deepEqual(listed.map(x=>x.action_id),['bark.send_notification','weixin.send_text','weixin.notify_download']);
-  for(const action of ['bark.send_notification','weixin.send_text','weixin.notify_download']){
+  assert.deepEqual(listed.map(x=>x.action_id),['dub.shorten_url','bark.send_notification','weixin.send_text','weixin.notify_download']);
+  for(const action of ['dub.shorten_url','bark.send_notification','weixin.send_text','weixin.notify_download']){
    const result=await(await get('?contract=1&action='+action)).json();
    assert.equal(result.deployment_id,version);
    assert.match(result.contract_digest,/^[a-f0-9]{64}$/);
@@ -62,6 +70,7 @@ test('one workerd binding exposes three reviewed contracts, historic receipts an
    VALUES(1,? ,?,'unknown',1,1)`).bind(requestId,'f'.repeat(64)).run();
   assert.equal((await(await get('?receipt=1&action=weixin.send_text')).json()).status,'unknown');
   assert.equal((await get('?receipt=1&action=bark.send_notification')).status,403);
+  assert.equal((await get('?receipt=1&action=dub.shorten_url')).status,403);
   assert.equal((await mf.dispatchFetch('https://weixin-owner.example.org/mcp')).status,404);
   assert.equal((await mf.dispatchFetch('https://weixin-owner.example.org/setup')).status,403);
   assert.equal(external(),0);
@@ -87,5 +96,33 @@ test('unified workerd binding forwards one encrypted Bark notification to fixed 
   assert.equal(reply.status,'accepted');
   assert.equal(external(),1);
   assert.equal(reply.input_digest.length,64);
+ }finally{await mf.dispose();}
+});
+
+
+test('real workerd private RPC creates one anonymous Dub URL, never HTTP public send',async()=>{
+ const target='https://example.org/file?private=value%20with%20space';
+ const caller=`export default {async fetch(request,env){
+  const url='${target}',public_stats=false;
+  const val={public_stats,url};
+  const canonical=value=>value&&typeof value==='object'&&!Array.isArray(value)
+    ?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b,'en')))
+    :value;
+  const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(canonical(val))));
+  const input_digest=Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
+  const contract=await env.ACTIONS.getContract('dub.shorten_url');
+  const result=await env.ACTIONS.execute('dub.shorten_url',{
+    invocation_id:'${requestId}',deployment_id:contract.deployment_id,
+    contract_digest:contract.contract_digest,input_digest,url,public_stats});
+  return Response.json(result);
+ }};`;
+ const {mf,external}=fixture(caller);
+ try{
+  const response=await(await mf.getWorker('caller')).fetch('https://caller.example/');
+  assert.equal(response.status,200);
+  const result=await response.json();
+  assert.equal(result.status,'accepted');
+  assert.equal(result.short_link,'https://dub.sh/Abc123');
+  assert.equal(external(),1);
  }finally{await mf.dispose();}
 });

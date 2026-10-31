@@ -60,3 +60,31 @@ is retained in `docs/spec-21-cutover.md`.
    explicit maintenance authorization, frozen admission, drained Runs,
    reviewed version pins and a controlled reopening of business Workflows.
    A successful CI or merge never publishes production code automatically.
+
+## Spec #35 · Dub anonymous short-link Action (source candidate; not deployed)
+
+`dub.shorten_url` is another static logical Action in the same private
+`ActionsEntrypoint`/`ACTIONS` binding. Its bounded input is one `inputs.url`
+HTTP(S) target plus a reviewed optional `public_stats` boolean (default false).
+The target and its entire query are disclosed to the fixed Dub upstream only
+upon a new manually invoked, explicitly user-requested Workflow Run; the
+Workflow persists `runs.inputs`, including the complete URL and query, as
+expressly accepted by the Owner. Do not use URL targets containing credentials
+unless that storage and third-party disclosure are intentional.
+
+The caller cannot choose the upstream endpoint, account, recipient, slug,
+headers, or any token. The Handler never fetches the URL destination and
+returns only a validated `dub.sh` result. Re-entry after a durable dispatch
+reservation yields Unknown (Dub has no reviewed read-only receipt recovery);
+no lost-ack or 5xx retry is permitted. The Workflow compiler forbids all
+triggers for this Action, admits only the literal `inputs.url` reference,
+requires one exact immutable Contract/Worker Version grant, and retains the
+existing gate/cancel fences. The API approval/grant is not independently
+verified UI consent: the operator must only dispatch from an explicit Owner
+instruction such as `@Workflow 缩短 <URL>`. No popup guarantee is claimed.
+
+**Acceptance:** Local source/CI and stubbed real workerd RPC are necessary but
+not proof the unsupported anonymous Dub endpoint still works in production.
+An actual link creation/readback and Provider/Workflow protected releases need
+separate explicit authorization. This is not an independent Worker/publisher,
+not an MCP tool, and not a revival of cancelled CandyBox MCP #325.
