@@ -118,17 +118,17 @@ test('duplicate receipts never poll, new requests fail closed on unavailable syn
   assert.equal(db.sql.prepare('SELECT count(*) AS n FROM weixin_send_receipts').get()?.n,1);
 });
 
-test('stale and missing Owner context stop a new send before durable reservation',async()=>{
+test('unattended Owner-only notification accepts old or missing observation timestamp after trusted sync',async()=>{
  const {env,db,bindReady}=fixture();await bindReady();
  let sends=0,polls=0;
  const send=async()=>{sends++;return 'accepted' as const;};
  const sync=async()=>{polls++;};
  db.sql.prepare('UPDATE weixin_binding SET last_verified_context_at=?').run(Math.floor(Date.now()/1000)-86401);
- await assert.rejects(()=>sendOnce(env,'old context',id,send,sync),/owner_context_stale/);
+ assert.equal((await sendOnce(env,'old observation',id,send,sync)).status,'accepted');
  db.sql.prepare('UPDATE weixin_binding SET last_verified_context_at=NULL').run();
- await assert.rejects(()=>sendOnce(env,'missing context',id,send,sync),/owner_context_stale/);
- assert.equal(polls,2);assert.equal(sends,0);
- assert.equal(db.sql.prepare('SELECT count(*) AS n FROM weixin_send_receipts').get()?.n,0);
+ assert.equal((await sendOnce(env,'missing observation',second,send,sync)).status,'accepted');
+ assert.equal(polls,2);assert.equal(sends,2);
+ assert.equal(db.sql.prepare('SELECT count(*) AS n FROM weixin_send_receipts').get()?.n,2);
 });
 
 test('definite upstream rejection stores bounded codes, unknown stores none and duplicate never resends',async()=>{

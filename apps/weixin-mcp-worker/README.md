@@ -52,16 +52,16 @@ Run `corepack pnpm run check` from the repository root for SQLite tests,
 synthetic iLink/QR tests, real local workerd D1/RPC tests, TypeScript checks,
 and Wrangler dry-run. No live Tencent request is performed by these checks.
 
-## Owner context preflight and numeric reject diagnostics (source-only proposal)
+## Trusted Owner sync and numeric reject diagnostics
 
-New sends still perform the existing bounded `getUpdates` sync. If the latest
-verified direct Owner message is older than **24 hours** (or absent), reject
-with `owner_context_stale` *before* durable reservation or Tencent dispatch.
-This is a conservative local policy, **not** a documented Tencent token TTL.
-The Owner must send a new direct message before starting a separately authorized
-new Invocation. Matching, already-reserved historical IDs are read without
-polling or resending. Verified Owner messages refresh the observation time
-even if their context token is unchanged; strangers and groups never do.
+New sends perform the existing bounded `getUpdates` sync before reserving a
+send. A successful sync and the verified, encrypted Owner binding are sufficient;
+an Owner is **not** required to send a new message every 24 hours. Failed sync,
+unready binding, generation change, lease conflict or missing verified recipient
+still block sends. An upstream-rejected or ambiguous send retains its actual
+receipt state and is never automatically replayed. Matching historical IDs are
+queried without polling or resending. Only verified Owner messages update the
+observed context timestamp; strangers and groups never do.
 
 The additive migration `migrations/0002_send_rejection_codes.sql` adds
 nullable bounded integer `upstream_ret`/`upstream_errcode` fields to D1
