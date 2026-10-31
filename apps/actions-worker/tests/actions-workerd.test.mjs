@@ -35,7 +35,7 @@ test('one workerd binding exposes three reviewed contracts, historic receipts an
  const caller=`export default {async fetch(request,env){const q=new URL(request.url).searchParams;
    const action=q.get('action');try{
     if(q.has('list'))return Response.json(await env.ACTIONS.listActions());
-    if(q.has('contract'))return Response.json(await env.ACTIONS.getContract(action));
+    if(q.has('contract'))return Response.json(await env.ACTIONS.getContract(action,q.has('digest')?q.get('digest'):undefined));
     if(q.has('receipt'))return Response.json(await env.ACTIONS.getReceipt(action,{
      invocation_id:'${requestId}',binding_generation:1,input_digest:'${'f'.repeat(64)}'}));
     return Response.json(await env.ACTIONS.execute(action,{}));
@@ -53,6 +53,9 @@ test('one workerd binding exposes three reviewed contracts, historic receipts an
    assert.equal(result.deployment_id,version);
    assert.match(result.contract_digest,/^[a-f0-9]{64}$/);
    if(action==='weixin.send_text')assert.equal(result.manifest.version,3);
+   const pinned=await(await get('?contract=1&action='+action+'&digest='+result.contract_digest)).json();
+   assert.deepEqual(pinned,result);
+   assert.equal((await get('?contract=1&action='+action+'&digest='+('0'.repeat(64)))).status,403);
   }
   assert.equal((await get('?contract=1&action=arbitrary.http')).status,403);
   await db.prepare(`INSERT INTO weixin_send_receipts(generation,request_id,text_digest,status,created_at,updated_at)
