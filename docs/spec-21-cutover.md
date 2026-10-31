@@ -152,7 +152,11 @@ status checks, exact single Provider Version, unbound old Owner and the
 historical receipt baseline. It independently verifies the exact source
 Custom Domain ID immediately before one DELETE, confirms the hostname
 is vacant before one target PUT, and independently verifies the new route.
-If target attach fails or its response is ambiguous, it only attempts a
+If the DELETE response is ambiguous (including an empty body) but independent
+readback confirms the hostname is vacant twice, continue to the one approved
+target attach without repeating DELETE or restoring the source prematurely.
+If the hostname still appears attached or its state is unclear, stop with no
+further write. If target attach fails or its response is ambiguous, it only attempts a
 single restore of the source after *proving the hostname vacant*; if the
 target is already verified, no retry occurs. Unknown or conflicting
 routing state is never overwritten. Even a verified source restoration

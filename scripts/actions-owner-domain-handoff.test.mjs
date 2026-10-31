@@ -43,14 +43,18 @@ test('guarded detach and attach uses exact source ID, readback and one target wr
    const u=new URL(url),path=u.pathname,method=init.method||'GET';
    if(path.endsWith('/instances'))return {ok:true,status:200,json:async()=>native};
    if(path.endsWith('/workers/domains')&&method==='GET'){
-    lists++;const view=scenario==='stale-read-after-detach'&&service===null?'weixin-mcp-worker':service;
+    lists++;const view=['stale-read-after-detach','delete-unknown-stale'].includes(scenario)&&service===null
+     ?'weixin-mcp-worker':service;
     return {ok:true,status:200,json:async()=>({success:true,result:view?[domain(view)]:[]})};
    }
    if(path.endsWith('/workers/domains/'+domain('').id)&&method==='DELETE'){
     writes.push('DELETE');
     if(scenario==='delete-refused')return {ok:false,status:403,json:async()=>({success:false,errors:[{code:10000}]})};
     service=null;
-    if(scenario==='delete-unknown')return {ok:false,status:503,json:async()=>({success:false,result:null,errors:[{code:10001}]})};
+    if(['delete-unknown','delete-unknown-stale'].includes(scenario))
+     return {ok:false,status:503,json:async()=>({success:false,result:null,errors:[{code:10001}]})};
+    if(scenario==='delete-empty-body')
+     return {ok:true,status:200,json:async()=>{throw Error('empty successful DELETE body')}};
     return {ok:true,status:204,json:async()=>{throw Error('204 must not parse JSON')}};
    }
    if(path.endsWith('/workers/domains')&&method==='PUT'){
@@ -76,7 +80,7 @@ test('guarded detach and attach uses exact source ID, readback and one target wr
   };
   return {fake,writes,view:()=>service,lists:()=>lists};
  };
- for(const scenario of ['success','target-unknown']){
+ for(const scenario of ['success','target-unknown','delete-unknown','delete-empty-body']){
   const f=fixture(scenario);
   assert.deepEqual(await executeHandoff(opts,f.fake),{target:'cloudflare-actions'});
   assert.deepEqual(f.writes,['DELETE','PUT:cloudflare-actions']);
@@ -85,7 +89,7 @@ test('guarded detach and attach uses exact source ID, readback and one target wr
  }
  for(const [scenario,expected,final] of [
   ['delete-refused',['DELETE'],'weixin-mcp-worker'],
-  ['delete-unknown',['DELETE','PUT:weixin-mcp-worker'],'weixin-mcp-worker'],
+  ['delete-unknown-stale',['DELETE'],null],
   ['target-refused',['DELETE','PUT:cloudflare-actions','PUT:weixin-mcp-worker'],'weixin-mcp-worker'],
   ['stale-read-after-detach',['DELETE'],null],
   ['restore-refused',['DELETE','PUT:cloudflare-actions','PUT:weixin-mcp-worker'],null]
