@@ -122,11 +122,10 @@ export async function executeHandoff(env=process.env,fetcher=fetch){
  catch{
   const after=await state();
   if(after==='source')fail('domain detach rejected; source preserved');
-  if(after==='vacant'){
-   await recover();
-   fail('domain detach outcome unknown; source restored');
-  }
-  fail('domain detach outcome unknown; manual review required');
+  if(after!=='vacant')fail('domain detach outcome unknown; manual review required');
+  // The DELETE response was ambiguous, but the exact hostname is now
+  // independently vacant. Recheck vacancy below; do not repeat DELETE.
+  // Continue to the single approved target attach, not a redundant restore.
  }
  const vacant=await state();
  if(vacant!=='vacant'){
