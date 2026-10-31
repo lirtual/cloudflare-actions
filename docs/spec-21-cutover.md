@@ -1,5 +1,34 @@
 # Spec #21 — Weixin/Bark to one Cloudflare Actions Worker
 
+> **Current acceptance status (2026-10-31; supersedes the historical
+> staging/NO-GO paragraphs below):** unified Provider deployed at
+> `f663dc66-33fd-4292-ba95-49ac12e26b36` (100%); Workflow Consumer
+> deployed at `2ecdc4b1-ad02-4bfa-95b2-be242b704170` (100%), with sole
+> `ACTIONS` Service Binding; Owner hostname transferred and QR/proof binding
+> verified (`ready`, generation 5). Original Weixin D1 retains 19 immutable
+> receipts. The D1 admission gate is `open` and there are no unsettled
+> durable Runs at the last verification. One-shot Weixin handset delivery and
+> one-shot Bark AES-256-GCM readable iPhone notification **both passed**.
+> **No new production changes or sends are authorized by this document.**
+>
+> **Remaining before Spec #21 completion:** the six original business
+> Workflows are still paused. Read-only inline repair candidates each
+> validated successfully (6/6, zero issues) using the current reviewed
+> `lirtual/session-actions` tag `v0.1.42-rc.9` at
+> `4ef3057f26b9b5126b6fba9d2ed652b040ef6506`.
+> `download` switches to the already compiled proof-gated
+> `weixin.notify_download` and `openlist` selects the reviewed unified
+> `weixin.send_text` v3 Contract. These are **candidates, not updated Drafts
+> or approved Published Plans**. Production Draft mutation, Publish/grants,
+> Resume and real business acceptance must be separately authorized and
+> independently verified. Old Workers/publishers still exist; retirement
+> requires a different approval. Preserve historical Unknowns and receipts.
+> See Issue #21's latest evidence comment for all six candidate Plan digests.
+>
+> The numbered initial cutover steps, preflight snapshots, source-only
+> release descriptions and NO-GO records below are retained as **historical
+> audit evidence**, not claims about the current live deployment.
+
 Implementation target: `cloudflare-actions`, entrypoint `ActionsEntrypoint`.
 Static private catalog: `weixin.send_text`, `weixin.notify_download`,
 `bark.send_notification`. The owner

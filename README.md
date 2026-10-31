@@ -1,13 +1,21 @@
 # Cloudflare Actions
 
-> **Spec #21 source migration (not deployed).** `apps/actions-worker` now contains
-> the intended single `cloudflare-actions` runtime and its build-time Action
-> Catalog. This is **not** the currently released production topology.
-> Existing Weixin/Bark Worker and manual release paths remain active until a
-> separately authorized cutover proves a new Weixin key, Owner re-pair,
-> historical D1 continuity, old Workflow instance drain, exact Worker version
-> and Owner domain rollback. See [implementation and No-Go gates](docs/spec-21-cutover.md),
-> [bounded context](apps/actions-worker/CONTEXT.md) and [ADR](docs/adr/0001-single-worker-action-catalog.md).
+> **Spec #21 production status (2026-10-31): partially accepted, Issue Open.**
+> The single `cloudflare-actions` Worker is deployed at Provider Version
+> `f663dc66-33fd-4292-ba95-49ac12e26b36` (100%). The Workflow consumer
+> uses only `ACTIONS -> cloudflare-actions`; the existing Weixin Owner domain
+> routes to the new Worker. Weixin handset and Bark iPhone AES-GCM plaintext-read
+> acceptance passed as two distinct one-shot tests. The original Weixin D1
+> retained 19 receipts, including historical Unknown outcomes.
+> **Six existing business Workflows remain paused**, pending reviewed contract
+> updates, new Published Versions and controlled resumption. The two legacy
+> Workers and their manual publishers remain deployed but are not the current
+> Workflow notification binding; retirement requires separate authorization.
+> Some sections below describe the **legacy** topology and release procedures,
+> not the new authoritative production path. See
+> [current migration/acceptance status](docs/spec-21-cutover.md),
+> [bounded context](apps/actions-worker/CONTEXT.md) and
+> [ADR](docs/adr/0001-single-worker-action-catalog.md).
 
 Independent, reviewed Cloudflare Action Providers. Specification:
 https://github.com/lirtual/mcp-workers/issues/392.

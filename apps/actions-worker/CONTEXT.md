@@ -27,6 +27,10 @@ a fresh key requires one new verified Owner QR pairing. No
 runtime plugin loading, cross-Action credential selection, generic HTTP
 executor, new storage, or public send endpoint is permitted.
 
-**Status:** source and isolated integration tests implemented; producer
-release, secrets, domain transfer, old-instance drain, production acceptance
-and resource retirement are NOT performed. See `docs/spec-21-cutover.md`.
+**Status (2026-10-31):** the unified Worker, protected producer/consumer
+releases, domain transfer, fresh Owner QR/proof pairing, source receipt
+preservation and both Weixin/Bark single-shot physical handset E2E are
+verified. Six original business Workflows remain paused pending exact-grant
+republish and deliberate resume; legacy Worker/publisher retirement is not
+performed. Prior source-only preflight history is retained in
+`docs/spec-21-cutover.md`.
