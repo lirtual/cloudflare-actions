@@ -21,3 +21,11 @@ rejects can be stored by an additive D1 migration. Ambiguous sends remain
 `unknown` and are never automatically retried; no plain-text content or
 credentials enter diagnostics. D1 migration and synchronized production
 Provider/Workflow release require separate explicit authorization.
+
+## Generic private text action (source candidate, not deployed)
+
+A new `weixin.send_text` v2 private RPC receives bounded text only after
+Workflow's reviewed Plan, owner grant and persisted prerequisite checks. It
+reuses the existing D1 receipts, generation fence and single-owner binding.
+The v1 OpenList/download actions remain for immutable published versions
+until their production migration is explicitly authorized and accepted.
