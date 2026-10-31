@@ -119,6 +119,26 @@ bypass verification. This first-release job intentionally does not implement
 later compatible Provider upgrades or domain transfer/rollback; those require
 separately reviewed source and authorization.
 
+## Protected Owner domain transfer and rollback (not yet dispatched)
+
+The existing `Release Unified Cloudflare Actions` manual GitHub workflow also
+supports `domain_operation=transfer|rollback`, with
+`deploy_to_production=false`, explicit `owner_domain_approved=true`, exact
+active Provider Version ID and frozen Workflow D1 gate. It does not create a
+second deployment flow or deploy any Worker. The route is the existing single
+Cloudflare Worker Custom Domain `weixin.lirtual.dpdns.org` in the reviewed
+zone. Both the old and new source Services are explicitly allowlisted, and
+`transfer` requires the original Owner state to be unbound with preserved
+receipts. Native Workflow instance drain, paused published Workflows, terminal
+Runs, 0018 frozen state and the unified Provider's one active Secret-backed
+Version are mandatory for either direction. The operation verifies exact
+source-route identity immediately before issuing a single Cloudflare PUT and
+reads back the exact target route afterward. An unknown result must be
+investigated using read-only inventory, **never blindly retried**. The old
+encrypted Session does not revive on rollback: Owner QR re-pair may still be
+necessary. Domain routing alone does not start or resume a Workflow, change
+D1 admission or send an Action.
+
 ## Current release decision
 
 **NO-GO for production** until trusted fresh-key provisioning and Owner

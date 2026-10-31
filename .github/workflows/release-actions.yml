@@ -12,6 +12,24 @@ on:
         type: boolean
         required: true
         default: false
+      domain_operation:
+        description: 'None, reviewed Owner domain transfer, or frozen-gate rollback'
+        type: choice
+        required: true
+        default: none
+        options:
+          - none
+          - transfer
+          - rollback
+      owner_domain_approved:
+        description: 'Explicit, separate Owner authorization for one production domain change'
+        type: boolean
+        required: true
+        default: false
+      expected_provider_version:
+        description: 'Exact previously reviewed active unified Provider version for domain operation'
+        type: string
+        required: false
       expected_receipts:
         description: Exact historical Weixin receipt count recorded before old Owner unbind
         type: string
@@ -20,7 +38,7 @@ permissions:
   contents: read
 jobs:
   release:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == 'lirtual' && inputs.deploy_to_production == true && inputs.actions_old_ingress_quiesced == true }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == 'lirtual' && inputs.deploy_to_production == true && inputs.actions_old_ingress_quiesced == true && inputs.domain_operation == 'none' }}
     runs-on: ubuntu-latest
     concurrency:
       group: cloudflare-actions-production
@@ -83,3 +101,49 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           EXPECTED_VERSION_ID: ${{ steps.publish.outputs.version_id }}
         run: node scripts/actions-release-guard.mjs readback
+
+  owner-domain-handoff:
+    name: Reviewed Owner domain route handoff (no Worker deployment)
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+          github.actor == 'lirtual' && inputs.deploy_to_production == false &&
+          inputs.actions_old_ingress_quiesced == true && inputs.owner_domain_approved == true &&
+          (inputs.domain_operation == 'transfer' || inputs.domain_operation == 'rollback') }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: cloudflare-actions-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require exact current main without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_ACTOR" == 'lirtual' && "$GITHUB_REF" == 'refs/heads/main' ]]
+          [[ "$GITHUB_SHA" == "$(git rev-parse HEAD)" ]]
+          [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Check original release and Owner domain handoff contract offline
+        run: node --test scripts/actions-protected-release.test.mjs scripts/actions-owner-domain-handoff.test.mjs
+      - name: Move exact Owner hostname to reviewed Service, then read back
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACTIONS_OLD_INGRESS_QUIESCED: ${{ inputs.actions_old_ingress_quiesced }}
+          ACTIONS_OWNER_DOMAIN_APPROVED: ${{ inputs.owner_domain_approved }}
+          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
+          ACTIONS_DOMAIN_OPERATION: ${{ inputs.domain_operation }}
+          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+        run: node scripts/actions-owner-domain-handoff.mjs
