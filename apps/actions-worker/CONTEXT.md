@@ -1,8 +1,8 @@
 # Unified Cloudflare Actions — bounded context (Spec #21)
 
 The `cloudflare-actions` Worker is the single **physical runtime** for the
-static reviewed Action Catalog: `weixin.send_text`, `weixin.notify_download`
-and `bark.send_notification`.
+static reviewed Action Catalog: `weixin.send_text`, `weixin.notify_download`,
+`bark.send_notification`, and `dub.shorten_url`.
 A logical Provider/Handler is not a separately deployed Worker. All business
 orchestration, Published Plans, immutable Action grants, durable dispatch
 reservations and cancellation remain in `lirtual/mcp-workers` Workflow.
@@ -61,7 +61,7 @@ is retained in `docs/spec-21-cutover.md`.
    reviewed version pins and a controlled reopening of business Workflows.
    A successful CI or merge never publishes production code automatically.
 
-## Spec #35 · Dub anonymous short-link Action (source candidate; not deployed)
+## Spec #35 · Dub anonymous short-link Action (deployed; third-party durability pending)
 
 `dub.shorten_url` is another static logical Action in the same private
 `ActionsEntrypoint`/`ACTIONS` binding. Its bounded input is one `inputs.url`
@@ -83,36 +83,49 @@ existing gate/cancel fences. The API approval/grant is not independently
 verified UI consent: the operator must only dispatch from an explicit Owner
 instruction such as `@Workflow 缩短 <URL>`. No popup guarantee is claimed.
 
-**Acceptance:** Local source/CI and stubbed real workerd RPC are necessary but
-not proof the unsupported anonymous Dub endpoint still works in production.
-An actual link creation/readback and Provider/Workflow protected releases need
-separate explicit authorization. This is not an independent Worker/publisher,
-not an MCP tool, and not a revival of cancelled CandyBox MCP #325.
+**Approved consent and privacy boundary (2026-10-31):** The Owner
+superseded the earlier mandatory per-invocation ChatGPT popup requirement
+with a fresh, explicit **manual one-shot Workflow Run instruction**.
+A Published Plan grant or model-generated `approved` flag alone is not a
+new instruction. Original full URL/query may be persisted in Workflow
+`runs.inputs` and disclosed to Dub, by explicit Owner decision.
+`public_stats` is a **literal Plan-time boolean** (default `false`);
+`true` deliberately makes Dub statistics public. It cannot be supplied
+as a dynamic Run input. Do not send sensitive query tokens unless D1
+storage and external disclosure are intended.
 
-### Spec #35 · Dub post-create redirect integrity gate (source-only remediation)
+### Spec #35 · Deployed redirect integrity guard and acceptance limits
 
-The first production anonymous Dub Run was accepted exactly once, but an
-independent HEAD+GET read initially returned a 302 Location lacking the entire
-original query, and a later read returned 307 to Dub's links page with a
-public `Link Not Found`. Upstream's reviewed process-link/create-link code and
-get-final-url middleware intend to preserve destination query. This does not
-establish which upstream layer changed the saved destination or removed the
-link; the anonymous header is not a guaranteed public REST contract.
+The Provider added a bounded, no-follow `HEAD` against the newly created
+fixed `https://dub.sh/<key>` link. Only a 301/302/303/307/308 whose raw
+`Location` equals the complete original destination **including query**
+can return `accepted`. Any mismatch, failure, timeout, or ambiguous
+result yields `unknown`; never follow redirects, fetch the target or
+POST a second time for the same Invocation.
 
-**Fail-closed remedy:** after one successful anonymous POST, verify the exact
-validated `dub.sh` short link using one bounded HEAD with `redirect:manual`.
-Only 301/302/303/307/308 with an exact original target Location (including
-query) can produce `accepted`. Errors, missing/mismatched Location, unexpected
-status, HEAD timeout and the later Dub 307 not-found transition return
-`unknown`. Never repeat POST or follow the Location / fetch an arbitrary
-third-party target. A HEAD success is only a point-in-time integrity proof,
-not an uptime/durability guarantee. Consumer uses its *unchanged* original
-Contract Digest and immutable Published Versions; it does not need new source.
+**Verified as of 2026-10-31:** PR #37 source and CI passed; protected
+release #41205370664 deployed Provider Version
+`3564c2ae-538f-4fe7-beee-b4e0e328c7e8` (100%). Protected Consumer
+release #41207448615 deployed Version
+`52a5f18f-9364-4479-8dd3-86546506c9be` (100%), with the exact
+Provider Version pinned. Five original business Workflows were restored.
+One **new** manual-only Dub Run
+`0db31eef-1130-4858-9086-40dbe13d5a4e` returned accepted after
+the Provider's own complete-Location verification. Its test Workflow
+remains paused, and no repeat invocation is permitted.
 
-This source change and its stub-based workerd tests are **not** production
-verification, and must not be deployed by direct Wrangler/manual API calls.
-A later reviewed protected Provider upgrade will change the Version ID;
-first pause/freeze/drain, then use the existing release workflow, repin the
-Workflow Consumer and affected Published Plans, and restore existing users.
-One separate authorized anonymous create/readback is needed for real acceptance;
-never retry the earlier “unknown” or previously completed invocation.
+**Do not repeat the superseded query-loss conclusion:** HTTP MCP
+intentionally redacts query parameters from reported redirect
+`Location`, so its displayed 302 without query cannot prove Dub
+lost that query. An independent raw CLI `HEAD` encountered HTTP 429,
+not an exact cross-client destination proof. An earlier anonymous link
+later showed `Link Not Found`; its upstream cause was not established.
+A point-in-time `HEAD` is not a durability or availability guarantee;
+the anonymous Header is not a documented stable public Dub API.
+
+**Still open:** independent unsanitized cross-client verification and
+reasonable follow-up availability observation, without rate-limit
+circumvention or duplicate create; EnvShare and Litterbox are separate
+unimplemented acceptance stages. No DuckDuckMail. Preserve existing
+Weixin/Bark digests and fallback, and use only the existing protected
+release path for any subsequent production change.

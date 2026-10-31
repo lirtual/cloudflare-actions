@@ -37,6 +37,31 @@ test('only acknowledge after one no-follow HEAD verifies exact target including 
  assert.equal(result.status,'accepted');
  assert.equal(result.short_link,'https://dub.sh/xyz123');
 });
+test('explicit public_stats=true is sent unchanged and requires matching upstream stats',async()=>{
+ const approved={url,public_stats:true};
+ const invocation={...await input(),...approved,input_digest:await digest(approved)};
+ assert.deepEqual(validateDubInput(approved),approved);
+ for(const responsePublic of [true,false]){
+  let creates=0,heads=0;
+  const result=await shortenDub(env,invocation,(async (uri,opts)=>{
+   assert.equal(opts?.redirect,'manual');
+   if(opts?.method==='POST'){
+    creates++;assert.equal(uri,'https://dub.co/api/links');
+    assert.deepEqual(JSON.parse(String(opts.body)),{
+     url,domain:'dub.sh',publicStats:true});
+    return Response.json({domain:'dub.sh',key:'xyz123',
+     shortLink:'https://dub.sh/xyz123',url,publicStats:responsePublic});
+   }
+   heads++;assert.equal(uri,'https://dub.sh/xyz123');
+   assert.equal(opts?.method,'HEAD');
+   return new Response(null,{status:302,headers:{location:url}});
+  }) as typeof fetch);
+  assert.equal(creates,1);
+  assert.equal(heads,responsePublic?1:0);
+  assert.equal(result.status,responsePublic?'accepted':'unknown');
+  assert.equal(result.short_link,responsePublic?'https://dub.sh/xyz123':undefined);
+ }
+});
 test('creation accepted by Dub but broken, missing or changed redirect remains unknown',async()=>{
  for(const [reply,expectHead] of [
   [new Response(null,{status:302,headers:{location:'https://example.org/path'}}),true],
