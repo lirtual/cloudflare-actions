@@ -11,18 +11,18 @@
 > one-shot Bark AES-256-GCM readable iPhone notification **both passed**.
 > **No new production changes or sends are authorized by this document.**
 >
-> **Remaining before Spec #21 completion:** the six original business
-> Workflows are still paused. Read-only inline repair candidates each
-> validated successfully (6/6, zero issues) using the current reviewed
-> `lirtual/session-actions` tag `v0.1.42-rc.9` at
-> `4ef3057f26b9b5126b6fba9d2ed652b040ef6506`.
-> `download` switches to the already compiled proof-gated
-> `weixin.notify_download` and `openlist` selects the reviewed unified
-> `weixin.send_text` v3 Contract. These are **candidates, not updated Drafts
-> or approved Published Plans**. Production Draft mutation, Publish/grants,
-> Resume and real business acceptance must be separately authorized and
-> independently verified. Old Workers/publishers still exist; retirement
-> requires a different approval. Preserve historical Unknowns and receipts.
+> **Remaining before Spec #21 completion (updated 2026-10-31):** the
+> production Drafts, exact-action grants and Published Plans for `ubuntu`,
+> `code-server`, `windows`, `download`, and `openlist` have been verified
+> and resumed (5/6). The latest reviewed GitHub Action tag is
+> `v0.1.42-rc.9` at `4ef3057f26b9b5126b6fba9d2ed652b040ef6506`;
+> `download` uses `weixin.notify_download`, and `openlist` uses
+> unified `weixin.send_text` v3. `chrome` remains paused at its old
+> Published Version because the platform blocked its production update.
+> The Bark and Weixin one-shot test Workflows remain paused; no new Run or
+> Session was dispatched for the migration. See the latest Issue #21
+> verification note for exact Plan digests. Old Workers/publishers still
+> exist and require independent retirement approval.
 > See Issue #21's latest evidence comment for all six candidate Plan digests.
 >
 > The numbered initial cutover steps, preflight snapshots, source-only
@@ -265,3 +265,37 @@ Action IDs forward without changing HTTP permissions. A later read-only
 Cloudflare snapshot showed zero nonterminal native Workflow instances, but
 this cannot prevent a new old-version admission. No production cutover
 was performed.
+
+## Subsequent protected Worker upgrade / rollback (proposal; not yet released)
+
+The existing `.github/workflows/release-actions.yml` is the sole production
+publisher. Its initial cutover remains **first-deployment only**. The new
+`protected-maintenance` branch, when merged, supports Owner-dispatched
+`upgrade` and exact-version `rollback` only; it cannot be triggered by a
+regular merge or CI success. Both operations require a separate explicit
+production authorization.
+
+Before either operation, the Owner must pause all business Workflows and
+independently freeze the existing D1 Action admission gate. The protected job
+checks that the reviewed active Provider version is exactly 100% deployed, the
+three existing Secret **names**, original D1, sole Consumer `ACTIONS` binding
+and Owner domain are intact; that the gate is frozen, no nonterminal Runs or
+native Workflow instances remain; and that the historical receipt baseline
+has not changed. It then rechecks these just before the production write.
+
+For **upgrade**, Wrangler deploys the reviewed main source with
+`--keep-vars` and **without any secrets file or key generation**, preserving
+the existing encryption key and binding. For **rollback**, Wrangler targets
+only the independently approved prior Worker Version ID, never an inferred
+"previous" version. Both independently read back the exact resulting Version,
+required binding/Secret names, Owner route, frozen gate and original receipts.
+No step changes D1, the Owner domain, or sends a notification.
+
+A changed Provider Version invalidates the old immutable Workflow deployment
+pins. Therefore **no automatic gate thaw or Workflow Resume** occurs.
+Review and republish affected plans with the new version, or the explicitly
+rolled-back version, then reopen the gate and resume only after separate
+production acceptance. If a deploy or readback is ambiguous, independently
+inspect production before any retry; do not assume a failed job rolled back.
+Rollback does not reverse D1 schema/data migrations or prove application
+compatibility: changes to contracts and stored state require separate review.
