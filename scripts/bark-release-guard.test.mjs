@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {verifySource,verifyActive} from './bark-release-guard.mjs';
+import {verifySource,verifyActive,verifyExistingBarkWorker} from './bark-release-guard.mjs';
 const conf=JSON.parse(readFileSync(new URL('../apps/bark-provider/wrangler.jsonc',import.meta.url),'utf8'));
 test('Bark release cannot restore a public route, MCP ingress, D1 or unexpected Secret',()=>{
  assert.equal(verifySource(conf),true);
@@ -20,6 +20,14 @@ const bindings=[
  {name:'BARK_ENCRYPTION_KEY',type:'secret_text'},
  {name:'CF_VERSION_METADATA',type:'version_metadata'}];
 const secrets=[{name:'BARK_DEVICE_KEY'},{name:'BARK_ENCRYPTION_KEY'}];
+test('retired Bark Worker 404 is never treated as permission for a first deploy',()=>{
+ assert.equal(verifyExistingBarkWorker({bindings}),true);
+ for(const invalid of [null,undefined,{}, {bindings:null}])
+  assert.throws(()=>verifyExistingBarkWorker(invalid),/Bark release blocked/);
+ const guard=readFileSync(new URL('./bark-release-guard.mjs',import.meta.url),'utf8');
+ assert.match(guard,/verifyExistingBarkWorker\(settings\)/);
+ assert.doesNotMatch(guard,/first private Worker release allowed/);
+});
 test('readback must verify unambiguous 100% version and exact two runtime Secrets',()=>{
  assert.equal(verifyActive(deployments,{bindings},secrets),id);
  assert.throws(()=>verifyActive({deployments:[{versions:[{percentage:50,version_id:id}]}]},{bindings},secrets));
