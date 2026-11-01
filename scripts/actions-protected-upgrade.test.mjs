@@ -93,7 +93,7 @@ test('rollback refuses an absent, stale or ambiguous Consumer deployment pin bef
  const staged=fixture({[path]:{success:true,result:{bindings:[c,targetPin]}}});
  assert.equal(await readOnlyMaintenancePreflight(rollback,staged.fetcher),before);
  assert.ok(staged.calls.every(x=>x.method==='GET'||
-  x.method==='POST'&&/^SELECT\\s/i.test(x.sql)));
+  x.method==='POST'&&/^SELECT\s/i.test(x.sql)));
  for(const bindings of [
   [c],
   [c,{...targetPin,text:before}],
