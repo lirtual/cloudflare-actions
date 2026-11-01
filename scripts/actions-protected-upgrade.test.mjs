@@ -83,35 +83,46 @@ test('original receipts, private Consumer binding and fresh version are exact',(
  assert.throws(()=>verifyNewVersion(before,before),/blocked/);
  assert.throws(()=>verifyNewVersion('bad',after),/blocked/);
 });
-test('rollback refuses an absent, stale or ambiguous Consumer deployment pin before publishing',async()=>{
- const targetPin={name:'ACTIONS_DEPLOYMENT_ID',type:'plain_text',text:after};
+test('rollback requires current Provider pin, then preserves it under a frozen gate',async()=>{
+ const currentPin={name:'ACTIONS_DEPLOYMENT_ID',type:'plain_text',text:before};
+ const targetPin={...currentPin,text:after};
  const rollback={...env,ACTIONS_MAINTENANCE_OPERATION:'rollback',
   ACTIONS_ROLLBACK_TARGET_VERSION:after};
- const path='/client/v4/accounts/'+env.CLOUDFLARE_ACCOUNT_ID+
-  '/workers/scripts/workflow-mcp-worker/settings';
- assert.equal(verifyConsumerBinding({bindings:[c,targetPin]},after),true);
- const staged=fixture({[path]:{success:true,result:{bindings:[c,targetPin]}}});
+ const prefix='/client/v4/accounts/'+env.CLOUDFLARE_ACCOUNT_ID;
+ const consumer=prefix+'/workers/scripts/workflow-mcp-worker/settings';
+ const provider=prefix+'/workers/scripts/cloudflare-actions/deployments';
+ assert.equal(verifyConsumerBinding({bindings:[c,currentPin]},before),true);
+ const staged=fixture({[consumer]:{success:true,result:{bindings:[c,currentPin]}}});
  assert.equal(await readOnlyMaintenancePreflight(rollback,staged.fetcher),before);
  assert.ok(staged.calls.every(x=>x.method==='GET'||
   x.method==='POST'&&/^SELECT\s/i.test(x.sql)));
  for(const bindings of [
   [c],
-  [c,{...targetPin,text:before}],
-  [c,{...targetPin,type:'secret_text'}],
-  [c,targetPin,targetPin],
-  [{...c,service:'weixin-mcp-worker'},targetPin]
+  [c,targetPin],
+  [c,{...currentPin,type:'secret_text'}],
+  [c,currentPin,currentPin],
+  [{...c,service:'weixin-mcp-worker'},currentPin]
  ]){
-  assert.throws(()=>verifyConsumerBinding({bindings},after),/blocked/);
-  const f=fixture({[path]:{success:true,result:{bindings}}});
+  assert.throws(()=>verifyConsumerBinding({bindings},before),/blocked/);
+  const f=fixture({[consumer]:{success:true,result:{bindings}}});
   await assert.rejects(()=>readOnlyMaintenancePreflight(rollback,f.fetcher),
    /Consumer|binding/);
  }
- // The same exact target pin is rechecked by the rollback postflight, after
- // the Provider identity has changed to the selected rollback version.
- const post=fixture({[path]:{success:true,result:{bindings:[c,targetPin]}}});
- assert.equal(await readOnlyMaintenancePreflight(env,post.fetcher,after),before);
- const mismatched=fixture({[path]:{success:true,result:{bindings:[c]}}});
- await assert.rejects(()=>readOnlyMaintenancePreflight(env,mismatched.fetcher,after),
+ // Actual rollback postflight sees the target Provider active, while the
+ // Consumer intentionally still holds the original pin; the gate stays frozen.
+ const post=fixture({
+  [consumer]:{success:true,result:{bindings:[c,currentPin]}},
+  [provider]:{success:true,result:{deployments:[
+   {versions:[{version_id:after,percentage:100}]}]}}
+ });
+ const postEnv={...env,ACTIONS_EXPECTED_PROVIDER_VERSION:after};
+ assert.equal(await readOnlyMaintenancePreflight(postEnv,post.fetcher,before),after);
+ const incorrect=fixture({
+  [consumer]:{success:true,result:{bindings:[c,targetPin]}},
+  [provider]:{success:true,result:{deployments:[
+   {versions:[{version_id:after,percentage:100}]}]}}
+ });
+ await assert.rejects(()=>readOnlyMaintenancePreflight(postEnv,incorrect.fetcher,before),
   /Consumer version pin/);
 });
 
