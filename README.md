@@ -1,23 +1,39 @@
 # Cloudflare Actions
 
-> **Spec #21 production status (2026-10-31): partially accepted, Issue Open.**
-> The single `cloudflare-actions` Worker is deployed at Provider Version
-> `f663dc66-33fd-4292-ba95-49ac12e26b36` (100%). The Workflow consumer
-> uses only `ACTIONS -> cloudflare-actions`; the existing Weixin Owner domain
-> routes to the new Worker. Weixin handset and Bark iPhone AES-GCM plaintext-read
-> acceptance passed as two distinct one-shot tests. The original Weixin D1
-> retained 19 receipts, including historical Unknown outcomes.
-> **Five of six business Workflows are republished and active**; `chrome`
-> remains paused because its production update was blocked by platform safety
-> controls. Both legacy Workers and manual publishers remain deployed but are
-> not the current Workflow notification binding. The old Weixin Worker is still
-> an explicit physical Owner-domain rollback target; retirement requires
-> separate authorization and a compatible fallback decision.
-> Some sections below describe the **legacy** topology and release procedures,
-> not the new authoritative production path. See
-> [current migration/acceptance status](docs/spec-21-cutover.md),
-> [bounded context](apps/actions-worker/CONTEXT.md) and
-> [ADR](docs/adr/0001-single-worker-action-catalog.md).
+> **Latest phase acceptance — 2026-11-01 (Spec #21 remains Open; Spec #35 Closed).**
+> One production `cloudflare-actions` Worker provides the unified static Action catalog;
+> Workflow Consumer uses the single `ACTIONS -> cloudflare-actions#ActionsEntrypoint`
+> binding. The latest independently recorded live Provider Version is
+> `39c5c470-040b-4ae7-b81a-6c47d04f548f` (six Actions).
+> `ubuntu`, `windows`, `code-server`, `download`, and `openlist` are
+> **Active**; `chrome` remains **Paused** at Draft revision 15 because its
+> saved legacy repository pin fails validation and the prior production write
+> was separately denied by platform safety checks. The safe inline Chrome
+> candidate is not a production change.
+>
+> The former physical `weixin-mcp-worker` and `bark-provider` scripts
+> were absent from the latest Cloudflare inventory (404); their GitHub release
+> workflows are now **disabled_manually**. The unified release workflow and CI
+> remain enabled. Do not use legacy Worker/domain rollback or publisher paths.
+> Same-Worker exact-Version rollback has source/CI evidence only:
+> **production rollback E2E is Not performed**, and retained Provider Version
+> #4 lacks Litterbox. A maintenance window, degradation decision and explicit
+> Owner production authorization are required before any real rollback.
+>
+> Existing Weixin handset and Bark iPhone notification E2E passed during
+> cutover. Updated `download` and `openlist` immutable Published Plans
+> were separately republished and independently read back with current grants;
+> a **new real send under those Plans is Not performed**.
+> No duplicate notification, deployment or rollback is required solely to
+> complete this documentation phase. Spec #35 Dub/EnvShare/Litterbox scoped
+> acceptance is complete. See
+> [current Spec #21 evidence](https://github.com/lirtual/cloudflare-actions/issues/21),
+> [cutover and rollback runbook](docs/spec-21-cutover.md), and
+> [Spec #35 closure](https://github.com/lirtual/cloudflare-actions/issues/35).
+>
+> **Historical sections below** retain earlier physical-provider release
+> instructions for audit. They are **not current runnable production procedures**;
+> consult the guarded unified release and current issue/runbook before any change.
 
 Independent, reviewed Cloudflare Action Providers. Specification:
 https://github.com/lirtual/mcp-workers/issues/392.
