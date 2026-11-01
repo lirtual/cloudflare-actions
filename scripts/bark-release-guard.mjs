@@ -15,6 +15,14 @@ export function verifySource(conf){
   fail('source must be private, stateless and bound only to fixed encrypted Owner');
  return true;
 }
+// The previous first-deploy 404 exception is no longer valid after Spec #21.
+// Never recreate a retired physical Worker from this legacy publisher.
+export function verifyExistingBarkWorker(settings){
+ if(settings===null)fail('retired Bark Worker absent; legacy publisher must not recreate it');
+ if(!settings||!Array.isArray(settings.bindings))
+  fail('existing Bark Worker configuration unavailable');
+ return true;
+}
 export function verifyActive(deployments,settings,secrets){
  const versions=deployments?.deployments?.[0]?.versions;
  if(!Array.isArray(versions)||versions.length!==1||versions[0].percentage!==100||
@@ -45,10 +53,7 @@ async function cloudflare(mode){
   return data.result;
  };
  const settings=await get('/settings',mode==='preflight');
- if(settings===null){
-  console.log('Bark is not deployed; first private Worker release allowed');
-  return;
- }
+ verifyExistingBarkWorker(settings);
  const [deployments,secrets]=await Promise.all([get('/deployments?per_page=1'),get('/secrets')]);
  const active=verifyActive(deployments,settings,secrets);
  console.log('Reviewed Bark version '+active+' and two required Secrets verified');
