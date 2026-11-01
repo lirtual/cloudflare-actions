@@ -39,13 +39,29 @@ publisher, alternate Cloudflare write, or a way to bypass the frozen gate.
    Provider pin and reads it back; it must not run first-cutover thaw actions.
    Independently verify the exact Consumer pin, sole `ACTIONS` binding,
    paused Workflows and continued frozen D1 gate after the release.
-6. Revalidate and re-Publish only business Plans whose source, contract,
-   data and target Version are independently compatible. Historic Plans and
-   Unknown invocations are immutable and must not be replayed. Reopen the
-   gate through the existing authorized mechanism only after all contract,
-   pinned-plan and readiness checks succeed; then selectively Resume and
-   read back. Any unavailable legacy Action is explicitly disabled, not
-   silently treated as supported.
+6. Revalidate and re-Publish only **paused** business Plans whose source,
+   contract, data and rollback target Version are independently compatible.
+   Historical Plans and Unknown invocations are immutable and must not be
+   replayed. Keep every business Workflow paused and the D1 gate frozen.
+7. The **existing** `lirtual/mcp-workers` protected Consumer release can
+   conditionally reopen the gate using the already implemented
+   `actions_old_ingress_quiesced=true` activation path; this is a **second
+   reviewed Consumer release** after the frozen target repin in step 5, not a
+   separate D1 utility or alternate deployment pipeline. That release checks
+   the current Provider and Consumer pin, exact sole `ACTIONS` binding,
+   frozen D1 migration 0018, zero active business Workflows and unsettled Runs,
+   and all six empty native nonterminal instance inventories **before**
+   `frozen -> open`; the existing postflight independently checks `open`
+   and continued pause. The existing `actions-cutover-prepare.test.mjs`
+   covers the unified-binding refreeze and activation checks. **However, this
+   flag is named and documented for first cutover, not previously exercised as
+   a recovery thaw**: production use requires explicit Owner approval of
+   this exact reuse and review of current main/required GitHub Environment.
+   Do not assume that source tests alone qualify it for live maintenance.
+8. Once the gate and binding/Plan readbacks are independently confirmed,
+   selectively Resume only supported Workflows and verify actual readiness.
+   Any unavailable earlier Action is explicitly disabled, never silently
+   treated as supported.
 
 This is not an automated rollback/recovery Saga. If an intermediate operation
 fails, **leave the gate frozen and business Workflows paused**, preserve the
@@ -53,6 +69,31 @@ original D1/receipts/Secrets and reconcile the observed physical Versions
 before any further action. Never blindly rerun an uncertain rollback, repin,
 or notification. A physical rollback does not revert D1 migrations or recover
 deleted legacy Workers or previous encrypted pairing.
+
+### Scope of the retained Version #4 fallback
+
+Version #4 `adf7d9d1-5bc1-424a-b74c-7c7dff699fd4` is an **available
+historical binary**, not a full-catalog compatible recovery. The corresponding
+GitHub release source `1b4fd46b6588777a48cc6ffef612df6b371beed6`
+includes `weixin.send_text`, `weixin.notify_download`,
+`bark.send_notification`, `dub.shorten_url`, and `envshare.share_text`.
+Version #5 source `06e452f506d1f815376beb93af800bd3b101b442`
+adds `litterbox.upload_file`. The prior and current source references have
+**identical** `apps/weixin-mcp-worker/src/provider.ts` and
+`apps/bark-provider/src/notification.ts` blob SHAs, plus identical
+`apps/actions-worker/wrangler.jsonc` blob SHAs. Cloudflare versions GET
+confirmed both retained physical Version IDs and similarly named Secret,
+D1 and Version Metadata bindings. This establishes a **bounded candidate**
+for historical five-Action recovery, but is not a full compiled-artifact
+provenance attestation or runtime contract/receipt E2E.
+
+A rollback to #4 would make Spec #35 Litterbox upload unavailable. No
+plan accepting or requiring that Action may be resumed under this target.
+Do not select #4 as an uninterrupted full-service rollback without an
+explicit reviewed feature-loss decision. Since a real rollback also pauses
+five active business Workflows and touches two production Workers, the
+operator must separately authorize the maintenance window and acknowledge
+the controlled degraded-catalog interval or decline the exercise.
 
 An ordinary unified Provider **upgrade** remains unchanged by the
 rollback-only preflight check and still requires coordinated Consumer and
