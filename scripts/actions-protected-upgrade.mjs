@@ -56,9 +56,10 @@ export function verifyConsumerBinding(result,expectedDeploymentId){
    names[0].name!=='ACTIONS'||names[0].service!=='cloudflare-actions'||
    names[0].entrypoint!=='ActionsEntrypoint')
   deny('single private Workflow Actions binding changed');
- // A rollback cannot safely restore notification execution while Consumer
- // still points to the version being replaced. Require the exact reviewed
- // target pin before any Provider version is changed.
+ // During the frozen/drained rollback window, Consumer must still pin the
+ // current deployed Provider. The guarded Consumer release derives its pin
+ // from the LIVE Provider, so staging the target pin BEFORE rollback is
+ // impossible. Keep admission frozen through rollback and re-pin afterwards.
  if(expectedDeploymentId!==undefined){
   const pins=bindings.filter(x=>x.name==='ACTIONS_DEPLOYMENT_ID');
   if(!UUID.test(expectedDeploymentId)||pins.length!==1||
@@ -91,7 +92,7 @@ export async function readOnlyMaintenancePreflight(env,fetcher=fetch,expectedCon
  };
  const consumer=await read('/workers/scripts/workflow-mcp-worker/settings');
  verifyConsumerBinding(consumer,expectedConsumerVersion??
-  (approved.operation==='rollback'?approved.target:undefined));
+  (approved.operation==='rollback'?approved.current:undefined));
  // A deploy without routes must not silently change the existing Owner domain.
  verifyDomain(await read('/workers/domains?hostname=weixin.lirtual.dpdns.org'),
   'cloudflare-actions');
@@ -124,8 +125,11 @@ if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.u
    await readOnlyMaintenancePreflight({...process.env,
     ACTIONS_MAINTENANCE_OPERATION:'upgrade',ACTIONS_ROLLBACK_TARGET_VERSION:'',
     ACTIONS_EXPECTED_PROVIDER_VERSION:process.env.EXPECTED_VERSION_ID},
-    fetch,selection.operation==='rollback'?process.env.EXPECTED_VERSION_ID:undefined);
-   console.log('Maintenance version, Owner route, secrets, receipts and frozen Workflow independently verified');
+    fetch,selection.operation==='rollback'?selection.current:undefined);
+   if(selection.operation==='rollback')
+    console.log('Rollback target active; original Consumer pin retained and gate frozen. Protected Consumer re-pin and Plan republish required before reopening admission');
+   else
+    console.log('Maintenance version, Owner route, secrets, receipts and frozen Workflow independently verified');
   }else deny('unsupported maintenance mode');
  })().catch(e=>{console.error(e.message);process.exitCode=1});
 }
