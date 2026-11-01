@@ -5,11 +5,22 @@
 > Workflow Consumer uses the single `ACTIONS -> cloudflare-actions#ActionsEntrypoint`
 > binding. The latest independently recorded live Provider Version is
 > `39c5c470-040b-4ae7-b81a-6c47d04f548f` (six Actions).
-> `ubuntu`, `windows`, `code-server`, `download`, and `openlist` are
-> **Active**; `chrome` remains **Paused** at Draft revision 15 because its
-> saved legacy repository pin fails validation and the prior production write
-> was separately denied by platform safety checks. The safe inline Chrome
-> candidate is not a production change.
+> All six business Workflows (`ubuntu`, `windows`, `code-server`,
+> `download`, `openlist` and `chrome`) are **Active**, but Active does not
+> establish actual Session success. Chrome Draft revision **16** was validated,
+> published and resumed with `lirtual/github-actions`; its effective
+> Published Version `3f53c44e-8496-49f1-ae0b-fb3a483f18b8` still pins
+> **old `v0.1.43-rc.2`**. The one real Chrome Session on that tag
+> [failed before Ready](https://github.com/lirtual/github-actions/actions/runs/41293120816)
+> due to an early-exit SIGPIPE (141) in the protected Tunnel help check;
+> it terminated and released its Session slot.
+> [PR #79](https://github.com/lirtual/github-actions/pull/79) fixed the
+> check with successful PR/main CI. New **`v0.1.43-rc.3`** is verified
+> in the Action Catalog and its replacement Chrome definition passes
+> read-only validation, but **production Pause/re-Publish was blocked by
+> platform safety checks** and was not retried or routed around.
+> **Do not start another Chrome Session on the old published tag** or claim
+> new-tag E2E success. See Spec #21 for the live write/acceptance gate.
 >
 > The former physical `weixin-mcp-worker` and `bark-provider` scripts
 > were absent from the latest Cloudflare inventory (404); their GitHub release
