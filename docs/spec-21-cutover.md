@@ -1,47 +1,69 @@
 ## Current 2026-11-01 rollback compatibility gate (source-only; production NOT exercised)
 
 This section supersedes the older assumption that the physical `weixin-mcp-worker`
-can receive an Owner-domain rollback. Independent Cloudflare production inventory
-returned 404 for **both** `weixin-mcp-worker` and `bark-provider`; the current
-Owner domain is attached to the unified `cloudflare-actions` Worker. Do **not**
-re-dispatch the old Owner-domain rollback or either legacy publisher: those
-targets are not independently available.
+can receive an Owner-domain rollback. Independent Cloudflare inventory returned
+404 for both former `weixin-mcp-worker` and `bark-provider`; the Owner domain
+belongs to `cloudflare-actions`. Do not invoke the old Owner-domain rollback
+or legacy publisher jobs against non-existent Worker targets.
 
-The existing guarded `release-actions.yml` maintenance path can select an
-exact retained unified Worker Version; retention alone does **not** establish
-cross-version Action contract, Consumer or D1 compatibility. The updated
-`actions-protected-upgrade.mjs` now **fails closed before a rollback** unless
-the current Workflow Consumer's one `ACTIONS_DEPLOYMENT_ID` plain-text binding
-has been *separately and intentionally staged* to the exact approved rollback
-target Version ID. The postflight independently rechecks that same target pin.
-A wrong/missing/duplicate pin is an error, not a reason to retry a version
-change. Neither check mutates Consumer settings. The existing frozen gate,
-paused business Workflows, physical drain, receipt integrity, Secrets and
-Owner-domain preconditions remain mandatory.
+The existing protected `release-actions.yml` supports an exact retained
+unified Worker Version rollback. **Retained does not imply compatible.** The
+current `mcp-workers` Consumer publisher (`reviewed-actions-provider-pin.mjs`)
+always reads the **currently deployed** Provider and pins that exact Version.
+It **cannot stage a historical target pin before the Provider rollback**.
+The preceding source gate requiring this pre-staging was therefore impossible
+to satisfy legitimately. This update fixes that dependency without adding a
+publisher, alternate Cloudflare write, or a way to bypass the frozen gate.
 
-Before any real rollback, separately review the retained target's full Action
-contracts and the compatibility of every Published Plan intended to resume.
-Owner authorization must cover the actual maintenance window and necessary
-Consumer version re-pinning through the **existing protected Workflow release
-path**; do not introduce direct Cloudflare production writes or a second
-publisher. With the gate frozen and business Workflows paused, stage the
-reviewed Consumer target pin, independently verify its identity, then run only
-the Owner-approved existing exact-version rollback job. Validate both sides
-again and republish/Resume only independently compatible business Plans
-before reopening admission. This is a *required operational choreography*,
-not evidence that any production rollback or staged Consumer release has
-occurred.
+**Required reviewed maintenance sequence (not performed):**
 
-An ordinary unified Provider **upgrade** is unchanged by this rollback-only
-preflight check. It still needs a coordinated Consumer version and Plan
-re-publication before notification dispatch can be considered usable; a
-successful Provider upgrade job alone is not service acceptance.
+1. Separately confirm production-maintenance authorization, exact current
+   and historical target Versions, full historical Action contract/Plan
+   compatibility, receipt baseline and protected rollback availability.
+2. Stop new business admission; **pause all** business Workflows, drain
+   durable and native instances, freeze the existing D1 Action gate, and
+   independently verify these conditions.
+3. The existing protected unified Provider rollback requires exactly one
+   Consumer `ACTIONS_DEPLOYMENT_ID` binding pinned to the **current** Provider
+   before rollback. Missing, duplicate or unexpected pins fail closed.
+   Roll back to the specifically approved Version using the existing
+   `release-actions.yml` maintenance job only.
+4. The Provider rollback postflight confirms the reviewed target Provider
+   active and the **old** Consumer pin unchanged, together with the frozen
+   gate, paused plans, zero unsettled/native instances, domain, Secrets and
+   original receipts. The mismatch is deliberate **only under freeze**:
+   **do not resume or dispatch** in this state.
+5. Run the existing protected `lirtual/mcp-workers` Consumer release with
+   `actions_old_ingress_quiesced=false` **while the gate remains frozen**.
+   That publisher stages the now-active rollback target as its automatic
+   Provider pin and reads it back; it must not run first-cutover thaw actions.
+   Independently verify the exact Consumer pin, sole `ACTIONS` binding,
+   paused Workflows and continued frozen D1 gate after the release.
+6. Revalidate and re-Publish only business Plans whose source, contract,
+   data and target Version are independently compatible. Historic Plans and
+   Unknown invocations are immutable and must not be replayed. Reopen the
+   gate through the existing authorized mechanism only after all contract,
+   pinned-plan and readiness checks succeed; then selectively Resume and
+   read back. Any unavailable legacy Action is explicitly disabled, not
+   silently treated as supported.
 
-The user-authorized 2026-11-01 re-publishing of the existing `download` and
-`openlist` Plans to the current unified Provider was verified at Publish and
-MCP readback level only; no new notification, Session, GitHub Task, rollback,
-Worker release or physical resource retirement was performed. The previously
-observed Chrome platform write refusal remains a distinct issue.
+This is not an automated rollback/recovery Saga. If an intermediate operation
+fails, **leave the gate frozen and business Workflows paused**, preserve the
+original D1/receipts/Secrets and reconcile the observed physical Versions
+before any further action. Never blindly rerun an uncertain rollback, repin,
+or notification. A physical rollback does not revert D1 migrations or recover
+deleted legacy Workers or previous encrypted pairing.
+
+An ordinary unified Provider **upgrade** remains unchanged by the
+rollback-only preflight check and still requires coordinated Consumer and
+business Plan re-Publish. A successful Provider upgrade by itself is not
+service acceptance.
+
+The user-authorized 2026-11-01 re-Publishing of `download` and `openlist`
+against the current Provider was verified at Publish/MCP readback level,
+not by a new physical notification E2E. The Chrome platform-denied Draft
+write remains independently blocked. No production rollback, Worker release,
+domain/D1 mutation, Session or notification was performed by this change.
 
 Evidence: [Issue #21](https://github.com/lirtual/cloudflare-actions/issues/21),
 [legacy fallback inventory](https://github.com/lirtual/cloudflare-actions/issues/21#issuecomment-6554843991),
