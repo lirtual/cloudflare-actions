@@ -48,7 +48,7 @@ export function verifyOriginalReceipts(result,expected){
     row.receipts!==expected)deny('original Weixin receipt baseline changed');
  return true;
 }
-export function verifyConsumerBinding(result){
+export function verifyConsumerBinding(result,expectedDeploymentId){
  const bindings=result?.bindings;
  const names=bindings?.filter(x=>x.type==='service'&&
   ['ACTIONS','WEIXIN_ACTION_PROVIDER','BARK_ACTION_PROVIDER'].includes(x.name));
@@ -56,6 +56,15 @@ export function verifyConsumerBinding(result){
    names[0].name!=='ACTIONS'||names[0].service!=='cloudflare-actions'||
    names[0].entrypoint!=='ActionsEntrypoint')
   deny('single private Workflow Actions binding changed');
+ // A rollback cannot safely restore notification execution while Consumer
+ // still points to the version being replaced. Require the exact reviewed
+ // target pin before any Provider version is changed.
+ if(expectedDeploymentId!==undefined){
+  const pins=bindings.filter(x=>x.name==='ACTIONS_DEPLOYMENT_ID');
+  if(!UUID.test(expectedDeploymentId)||pins.length!==1||
+     pins[0].type!=='plain_text'||pins[0].text!==expectedDeploymentId)
+   deny('Consumer version pin does not match reviewed rollback target');
+ }
  return true;
 }
 export function verifyNewVersion(before,after){
@@ -63,7 +72,7 @@ export function verifyNewVersion(before,after){
   deny('new production Worker version not independently identified');
  return true;
 }
-export async function readOnlyMaintenancePreflight(env,fetcher=fetch){
+export async function readOnlyMaintenancePreflight(env,fetcher=fetch,expectedConsumerVersion){
  const approved=verifyMaintenanceSelection(env);
  // Existing Worker secrets and D1 are only inspected by name/identity.
  await inspectActionsDeployment(env,approved.current,fetcher);
@@ -81,7 +90,8 @@ export async function readOnlyMaintenancePreflight(env,fetcher=fetch){
   return raw?payload:payload.result;
  };
  const consumer=await read('/workers/scripts/workflow-mcp-worker/settings');
- verifyConsumerBinding(consumer);
+ verifyConsumerBinding(consumer,expectedConsumerVersion??
+  (approved.operation==='rollback'?approved.target:undefined));
  // A deploy without routes must not silently change the existing Owner domain.
  verifyDomain(await read('/workers/domains?hostname=weixin.lirtual.dpdns.org'),
   'cloudflare-actions');
@@ -108,12 +118,13 @@ if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.u
     process.env.EXPECTED_VERSION_ID);
    console.log('New Worker Version ID differs from reviewed baseline');
   }else if(process.argv[2]==='postflight'){
-   verifyMaintenanceSelection(process.env);
+   const selection=verifyMaintenanceSelection(process.env);
    verifyNewVersion(process.env.ACTIONS_EXPECTED_PROVIDER_VERSION,
     process.env.EXPECTED_VERSION_ID);
    await readOnlyMaintenancePreflight({...process.env,
     ACTIONS_MAINTENANCE_OPERATION:'upgrade',ACTIONS_ROLLBACK_TARGET_VERSION:'',
-    ACTIONS_EXPECTED_PROVIDER_VERSION:process.env.EXPECTED_VERSION_ID});
+    ACTIONS_EXPECTED_PROVIDER_VERSION:process.env.EXPECTED_VERSION_ID},
+    fetch,selection.operation==='rollback'?process.env.EXPECTED_VERSION_ID:undefined);
    console.log('Maintenance version, Owner route, secrets, receipts and frozen Workflow independently verified');
   }else deny('unsupported maintenance mode');
  })().catch(e=>{console.error(e.message);process.exitCode=1});
