@@ -28,14 +28,48 @@ a fresh key requires one new verified Owner QR pairing. No
 runtime plugin loading, cross-Action credential selection, generic HTTP
 executor, new storage, or public send endpoint is permitted.
 
-**Status (2026-10-31):** the unified Worker, protected producer/consumer
-releases, domain transfer, fresh Owner QR/proof pairing, source receipt
-preservation and both Weixin/Bark single-shot physical handset E2E are
-verified. Five of six original business Workflows have been republished and resumed;
-`chrome` remains paused after its update was blocked by the platform.
-Legacy Worker/publisher retirement is not performed; the old Weixin Worker
-remains a reviewed physical Owner-domain fallback. Prior cutover history
-is retained in `docs/spec-21-cutover.md`.
+**Current recovery status (2026-11-01, supersedes the historical note
+below):** the unified `cloudflare-actions` Provider remains the only
+reviewed physical Action runtime; the Workflow Consumer has one
+`ACTIONS -> cloudflare-actions#ActionsEntrypoint` Service Binding.
+Cloudflare inventory returned **HTTP 404** for both former physical
+`weixin-mcp-worker` and `bark-provider`, so neither can be used as a live
+Owner-domain rollback target. The former GitHub release publishers still
+exist; do not invoke them merely to recreate missing Workers.
+`weixin.lirtual.dpdns.org` remains on the unified Worker.
+
+Five original business Workflows remain active. `download` and `openlist`
+were separately re-Published against the current unified Provider Version
+`39c5c470-040b-4ae7-b81a-6c47d04f548f` and independently read back,
+without a new notification E2E. `chrome` remains paused at Draft revision
+15 after its production write was refused by the ChatGPT platform.
+
+The only maintained physical rollback candidate is a **reviewed earlier
+Version of the same unified Worker**. Version #4,
+`adf7d9d1-5bc1-424a-b74c-7c7dff699fd4`, is retained and has the same
+required Secret binding names and D1 binding type as current Version #5;
+this **does not certify compatibility**. In particular, Version #5 added
+Litterbox, so a rollback to #4 reduces the Action Catalog. Exact-version
+production rollback **has not been exercised**.
+
+The `scripts/actions-protected-upgrade.mjs` rollback gate requires the
+Consumer to pin the **current** Provider before switching; when frozen
+and drained, the existing Owner-authorized rollback job may switch the
+Provider, then the independently protected `mcp-workers` Consumer release
+pins the now-active target under the still-frozen gate. Business Plans must
+be separately revalidated/re-Published before reopening admission. This
+is a source-verified **procedure**, not permission for live rollback;
+it requires explicit production maintenance approval. For evidence and
+remaining gates see [Spec #21](https://github.com/lirtual/cloudflare-actions/issues/21)
+and `docs/spec-21-cutover.md`.
+
+**Historical 2026-10-31 snapshot (superseded by the current inventory):**
+the unified Worker, protected producer/consumer releases, domain transfer,
+new Owner QR/proof pairing, source receipt preservation, and Weixin/Bark
+single-shot handset E2E were verified. Five of six Workflows were active;
+`chrome` remained paused. At that time the old Weixin Worker was still
+documented as a physical Owner-domain fallback. That statement is not a
+claim of its present existence.
 
 ## Adding another logical Cloudflare Action
 
