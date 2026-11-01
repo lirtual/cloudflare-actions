@@ -2,7 +2,8 @@
 
 The `cloudflare-actions` Worker is the single **physical runtime** for the
 static reviewed Action Catalog: `weixin.send_text`, `weixin.notify_download`,
-`bark.send_notification`, and `dub.shorten_url`.
+`bark.send_notification`, `dub.shorten_url`, `envshare.share_text`, and
+`litterbox.upload_file`.
 A logical Provider/Handler is not a separately deployed Worker. All business
 orchestration, Published Plans, immutable Action grants, durable dispatch
 reservations and cancellation remain in `lirtual/mcp-workers` Workflow.
@@ -61,7 +62,62 @@ is retained in `docs/spec-21-cutover.md`.
    reviewed version pins and a controlled reopening of business Workflows.
    A successful CI or merge never publishes production code automatically.
 
-## Spec #35 · Dub anonymous short-link Action (deployed; third-party durability pending)
+## Spec #35 · Final production acceptance (2026-11-01)
+
+The **six static logical Actions** above share the existing unified Worker and private
+`ACTIONS` binding; they are not six separate deployed Workers. Three #35
+utilities are now **production functionally accepted**, each with its own
+explicitly authorized, single-use evidence. This current section supersedes
+the older source-stage notes below, which are retained as historical context.
+
+- **Dub `dub.shorten_url` — PASS for anonymous TEMPORARY links only.**
+  A single production Run `0db31eef-1130-4858-9086-40dbe13d5a4e`
+  returned accepted after the Provider's no-follow HEAD verified the exact
+  destination including its query. No login, API key, custom slug, target
+  fetch, automatic retry or permanent-link promise. Upstream schedules
+  unclaimed anonymous-link deletion after roughly 30 minutes, not an exact
+  contractual TTL. Prior later dashboard redirect / HTTP 429 did **not**
+  establish a specific deletion cause or durable availability. A manual
+  one-shot Owner instruction is the consent boundary; `public_stats=false`
+  by default. Full original URL/query is persisted in Workflow inputs and
+  disclosed to Dub only when the Owner explicitly requests the Run.
+- **EnvShare `envshare.share_text` — PASS for one-use encrypted sharing.**
+  Protected Provider/Consumer production releases and real Run
+  `3a7a54fa-1bfa-4706-b9b0-bb97f54d4de3` succeeded. Independent first
+  retrieval returned HTTP 200 with `remainingReads=0`, AES-128-GCM
+  decryption matched the source, and the second retrieval returned HTTP 404.
+  The plaintext and decryption key were not persisted in Workflow D1.
+  The test Workflow is paused. A configured 24h TTL was **not** independently
+  observed to elapse; this was a one-read acceptance, not a 24h expiry test.
+- **Litterbox `litterbox.upload_file` — PASS for one real synthetic TXT
+  and observed 1h expiry.** The one approved manual Plan uploaded a 379-byte
+  file once (Run `3f8b7010-e28b-4a94-8793-ba7277769b0c`), via a
+  user-selected temporary Azure Blob SAS external GET, private Service
+  Binding and pinned Provider. Independent HTTP 200 download at about
+  `2026-11-01T05:17:21Z` matched SHA-256
+  `576d129577bf7b6819cf73d6581ac80f7b0e8b96c51f84ba1b8046febec64ddb`.
+  The only post-expiry no-follow GET at `2026-11-01T06:33:19Z` returned
+  **HTTP 404** (curl exit 63 because its 65,536-byte error-page body cap
+  was reached). This is an observed unavailable/expired response after the
+  selected 1h lifetime, **not** an exact deletion timestamp. The test
+  Workflow is paused; five business Workflows remain active. File input
+  accepts only exact `files.oaiusercontent.com` HTTPS or a narrowly bounded
+  `<account>.blob.core.windows.net/<container>/<blob>` read-only SAS shape.
+  A fileParams descriptor, Azure account name or SAS **does not prove
+  OpenAI-owned provenance**; `file_id` is opaque, not `file_`-prefixed.
+  Signed URLs and file bytes never enter D1. Upload is public plaintext,
+  at most 10 MiB, one-shot, no redirects or unknown-effect retry.
+
+Evidence: [Issue #35](https://github.com/lirtual/cloudflare-actions/issues/35),
+[Owner closure checklist](https://github.com/lirtual/cloudflare-actions/issues/35#issuecomment-6554271453),
+[Litterbox upload/independent hash](https://github.com/lirtual/cloudflare-actions/issues/35#issuecomment-6553845927),
+and [Consumer file boundary](https://github.com/lirtual/mcp-workers/blob/main/docs/spec35-litterbox-file-upload.md).
+No new Provider, deployment, storage, release or Portal change is authorized
+or performed by this documentation-only reconciliation.
+
+## Historical Spec #35 source-stage and intermediate acceptance notes
+
+## Spec #35 · Dub anonymous short-link Action (historical implementation notes)
 
 `dub.shorten_url` is another static logical Action in the same private
 `ActionsEntrypoint`/`ACTIONS` binding. Its bounded input is one `inputs.url`
@@ -123,24 +179,24 @@ later showed `Link Not Found`; its upstream cause was not established.
 A point-in-time `HEAD` is not a durability or availability guarantee;
 the anonymous Header is not a documented stable public Dub API.
 
-**Still open:** independent unsanitized cross-client verification and
-reasonable follow-up availability observation, without rate-limit
-circumvention or duplicate create; EnvShare and Litterbox are separate
-unimplemented acceptance stages. No DuckDuckMail. Preserve existing
-Weixin/Bark digests and fallback, and use only the existing protected
-release path for any subsequent production change.
+**Historical stage note (superseded by the current acceptance section):**
+Cross-client long-lived availability was not established and is not required
+under the Owner-approved temporary-link scope. EnvShare and Litterbox were
+later implemented and accepted independently. No DuckDuckMail; preserve
+Weixin/Bark digests and fallback, and use the existing protected release
+path for any subsequent production change.
 
 
-## Spec #35 · EnvShare follow-on boundary (NOT runnable)
+## Spec #35 · EnvShare boundary (historical design, now deployed)
 
-EnvShare has a distinct ciphertext-only acceptance stage. Current Workflow
-Run inputs and outputs are durable in D1: a normal `inputs.text` would
-persist plaintext, and a normal full `unseal#...` Action output would
-persist its decryption key. The EnvShare Handler is now staged in source, **not deployed**. Workflow
-source additionally encrypts before D1 and returns a random key only in the
-first `workflow_run` tool response; a later `workflow_result` with that key
-constructs the URL without persistence. Source/CI is not live ChatGPT
-acceptance, and a separately approved protected rollout is mandatory.
-See `docs/spec-35-envshare-boundary.md` for the verified upstream v2
-crypto contract, proposed ephemeral key delivery, replay-loss tradeoff
-and required tests. Do not reuse the cancelled CandyBox Worker/PR.
+The earlier source-only EnvShare plan was subsequently released and passed
+the one-time real decryption E2E described in the current section above.
+Workflow inputs/outputs remain durable in D1, so normal `inputs.text`
+would persist plaintext and a full `unseal#...` result would persist its
+decryption key. The deployed Workflow encrypts before D1 and returns a
+random key only in the first `workflow_run` response; the keyed
+`workflow_result` constructs the share URL without persisting the key.
+Lost first-response key delivery cannot be silently recovered or replayed.
+The one-use read test passed; wall-clock 24h expiry was not tested.
+See `docs/spec-35-envshare-boundary.md` for the historical crypto design
+and replay-loss tradeoff. Do not reuse the cancelled CandyBox Worker/PR.
