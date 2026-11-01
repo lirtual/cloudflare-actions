@@ -1,3 +1,52 @@
+## Current 2026-11-01 rollback compatibility gate (source-only; production NOT exercised)
+
+This section supersedes the older assumption that the physical `weixin-mcp-worker`
+can receive an Owner-domain rollback. Independent Cloudflare production inventory
+returned 404 for **both** `weixin-mcp-worker` and `bark-provider`; the current
+Owner domain is attached to the unified `cloudflare-actions` Worker. Do **not**
+re-dispatch the old Owner-domain rollback or either legacy publisher: those
+targets are not independently available.
+
+The existing guarded `release-actions.yml` maintenance path can select an
+exact retained unified Worker Version; retention alone does **not** establish
+cross-version Action contract, Consumer or D1 compatibility. The updated
+`actions-protected-upgrade.mjs` now **fails closed before a rollback** unless
+the current Workflow Consumer's one `ACTIONS_DEPLOYMENT_ID` plain-text binding
+has been *separately and intentionally staged* to the exact approved rollback
+target Version ID. The postflight independently rechecks that same target pin.
+A wrong/missing/duplicate pin is an error, not a reason to retry a version
+change. Neither check mutates Consumer settings. The existing frozen gate,
+paused business Workflows, physical drain, receipt integrity, Secrets and
+Owner-domain preconditions remain mandatory.
+
+Before any real rollback, separately review the retained target's full Action
+contracts and the compatibility of every Published Plan intended to resume.
+Owner authorization must cover the actual maintenance window and necessary
+Consumer version re-pinning through the **existing protected Workflow release
+path**; do not introduce direct Cloudflare production writes or a second
+publisher. With the gate frozen and business Workflows paused, stage the
+reviewed Consumer target pin, independently verify its identity, then run only
+the Owner-approved existing exact-version rollback job. Validate both sides
+again and republish/Resume only independently compatible business Plans
+before reopening admission. This is a *required operational choreography*,
+not evidence that any production rollback or staged Consumer release has
+occurred.
+
+An ordinary unified Provider **upgrade** is unchanged by this rollback-only
+preflight check. It still needs a coordinated Consumer version and Plan
+re-publication before notification dispatch can be considered usable; a
+successful Provider upgrade job alone is not service acceptance.
+
+The user-authorized 2026-11-01 re-publishing of the existing `download` and
+`openlist` Plans to the current unified Provider was verified at Publish and
+MCP readback level only; no new notification, Session, GitHub Task, rollback,
+Worker release or physical resource retirement was performed. The previously
+observed Chrome platform write refusal remains a distinct issue.
+
+Evidence: [Issue #21](https://github.com/lirtual/cloudflare-actions/issues/21),
+[legacy fallback inventory](https://github.com/lirtual/cloudflare-actions/issues/21#issuecomment-6554843991),
+[notification grant production repair](https://github.com/lirtual/cloudflare-actions/issues/21#issuecomment-6554905935).
+
 # Spec #21 — Weixin/Bark to one Cloudflare Actions Worker
 
 > **Current acceptance status (2026-10-31; supersedes the historical
