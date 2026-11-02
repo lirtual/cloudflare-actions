@@ -13,14 +13,15 @@ passed [production readback](https://github.com/lirtual/cloudflare-actions/issue
 **T7 is not complete:** the inherited Weixin encryption Secret, previous
 Worker Versions and enabled `weixin.lirtual.dpdns.org` custom domain
 are still present. The old QR/Owner `/setup/unbind` was a local-only
-operation and could not revoke Tencent/iLink authorization. Do not treat
-source deletion, local unbind, a changed current Worker Secret or blocked
-GitHub rollback as proof that privileged restoration of an older binary
-cannot send. T7 requires separately approved credential/config operations
-and independent upstream invalidity proof. T3 historical Plan sensitivity
-classification, T8 deletion and T9 irrecoverability remain distinct gates.
-The present protected release workflow accepts only approved upgrade and
-fails closed for rollback; it does **not** implement Secret/domain removal.
+operation and was not an independent Tencent/iLink revocation proof. The
+Owner confirms WeChat-side unbinding is already complete and asks that it
+remain outside further work. Do not equate that statement with a tested
+old-binary send failure. T7 focuses on separately approved project-controlled
+credential/config retirement, old-version and route invalidation. T3 Plan
+classification, T8 deletion and T9 irrecoverability remain separate.
+The protected release workflow accepts reviewed upgrade and per-version
+T7 retirement, rejects rollback, and does **not** implement Secret/domain
+removal.
 
 **T7 protected historical Version retirement candidate (not yet released):**
 The existing manual `release-actions.yml` supports a separately approved
