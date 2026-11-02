@@ -7,6 +7,17 @@ The Owner confirmed Q1=A / Q2=B / Q3=A in [ADR-0002](../../docs/adr/0002-bark-on
 
 Live catalog below is **still authoritative until protected migration and publication**. The older ADR-0001 and Spec #21 instructions to retain Weixin receipts governed the earlier unified-worker cutover and must remain in force during this retirement's unconfirmed stages. Protect immutable Plans, unknown historical Invocations, shared Worker release versions and unrelated Action histories; none may be silently rewritten or re-sent. Do not delete D1 tables, credentials, production Owner domain, Cloudflare resources, or historical Run metadata until later-round data-scope/compatibility choices and explicit irreversible-operation approval. Reuse the current Cloudflare Actions Worker, service binding, action gate, guarded CI/release and runtime proof; do not add another Provider or pipeline.
 
+**Round 2 decided:** Q4=A (extend the *existing* reviewed Chrome Bark trust
+and physical-Ready fence with an explicit OpenList Action allowlist);
+Q5=A (require signed, reconciled native Download Task terminal plus verified
+remote SHA-256 readback before Bark, never caller-declared success);
+Q6=A (delete Weixin-exclusive data and controlled copies only, preserve
+unrelated/shared business evidence); Q7=A (Bark E2E before old send
+disablement, then guarded provider retirement and separately authorized
+irreversible data purge). See ADR-0002 and the bounded runbook. Never confuse
+the previously required historical receipt retention with permission to
+re-execute legacy Plan versions. All round-2 rules are **design only**.
+
 **Proven live notification state:** Chrome → Bark signed Session Ready, encrypted notification, phone delivery and clickable temporary link passed on 2026-11-02 (Workflow Run `922b90fd-6953-43f8-b5cf-5380f74afc2c`); `openlist` still references `weixin.send_text` and `download` still references `weixin.notify_download`. The paused Weixin test Workflow also remains and needs retirement. OpenList Bark still needs source-reviewed signed Ready URL handling (the existing Bark handler currently restricts the trusted Session to Chrome). Download Bark still needs the existing single-item signed GitHub Task + physical terminal + remote hash-readback proof: a generic “Step succeeded” notification is not equivalent. Bark's Provider `accepted` is not proof of delivery to the handset.
 
 See the retirement design gate at the start of [Spec #21 cutover runbook](../../docs/spec-21-cutover.md). **The rest of this file records existing/historical behavior, not completed retirement.**
