@@ -1,5 +1,10 @@
 # ADR-0001: Build-time Action Catalog in one Worker
 
+> Historical cutover decision. The later Bark-only Weixin retirement and its
+> intentionally different final data-deletion policy are recorded in
+> [ADR-0002](0002-bark-only-weixin-retirement.md). This does not retroactively
+> change the original migration or authorize production deletion.
+
 **Decision (Spec #21, implementation draft).** Use a single physical
 `cloudflare-actions` Worker containing two source-reviewed Handlers. Workflow
 uses one private `ACTIONS` Service Binding, but keeps sole authority for

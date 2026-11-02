@@ -1,5 +1,12 @@
 # Weixin MCP Worker — bounded context (Spec #346)
 
+> **2026-11-02 design decision only:** Weixin notifications are selected for
+> complete retirement in favor of Bark; Owner Q2=B includes eventual permanent
+> removal of Weixin-specific D1 receipts and audit records. See unified Actions
+> [ADR-0002](../../docs/adr/0002-bark-only-weixin-retirement.md). All existing
+> encrypted bindings, historical receipts and operational controls remain intact
+> until separately authorized production retirement. Text below is historical.
+
 Owns the **single-owner** Weixin ClawBot binding, bounded authenticated iLink monitoring, and explicit outbound text. Excludes arbitrary friends/groups, inbound chat mirroring, background notifications, and a full OpenClaw Gateway.
 
 **Status (2026-10-27):** [Issue #346](https://github.com/lirtual/mcp-workers/issues/346) is closed, PRs #348 and #364 are merged, and the production Worker and ChatGPT connection have been verified. The owner has confirmed two outbound messages on the handset. Both upstream send receipts remain `unknown`; handset confirmation must not be inferred from those receipts. A ready binding does not guarantee a valid context after prolonged inactivity.

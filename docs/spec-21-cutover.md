@@ -1,3 +1,38 @@
+## 2026-11-02 Grill With Docs — Bark-only notification and Weixin retirement (DESIGN ONLY)
+
+**Accepted round 1: Q1=A, Q2=B, Q3=A.** See [ADR-0002](adr/0002-bark-only-weixin-retirement.md). This section is a **new proposed retirement**, not a statement that the earlier unified-Worker cutover is undone. Older sections below are historical runbooks for the previous migration. The target is: no executable Weixin Action, no Weixin Owner pairing or management, and eventual **permanent deletion of Weixin-specific D1 receipts and audit data**. No production write, secret access or destructive operation is authorized in this Grill.
+
+### Effective Workflow inventory (read-only, 2026-11-02)
+
+- `chrome` — Active Bark; signed Quick Tunnel URL, encrypted notification and handset click-through PASS. Leave untouched.
+- `openlist` — Active `weixin.send_text` with signed Session Ready URL. Replace with Bark only after the equivalent trusted URL support and physical GitHub Attempt fences pass tests and real E2E.
+- `download` — Active `weixin.notify_download` after one reviewed GitHub Download Task. Replace with Bark only after exactly the same signed OIDC Claim, native Task terminal, source/parent Step success, cancellation gate and remote SHA-256 readback guarantee are preserved. Do not accept a caller-reported success or success-shaped body as evidence.
+- `windows`, `ubuntu`, `code-server` — Active, no notification. Q1=A explicitly declines adding one.
+- Paused legacy Weixin test Workflow — to be retired, not changed into a new business notification; other paused non-Weixin fixture Workflows are out of scope.
+
+The current Bark Consumer already supports **Chrome-only** `session_step_id` with same-Run, exact reviewed Tag, signed Ready, live physical inspection, atomic D1 single-send fence, clickable HTTPS URL injected in memory. Extend/reuse those existing checks for OpenList after reviewing its actual Session identity. Bark `bark.send_notification` currently has no reviewed `download_step_id` input or download-completion proof path; do not simply substitute it for the old Weixin Action.
+
+### Retirement dependency chain (proposed, **not executed**)
+
+1. **Inventory and design:** inspect all current/published/dormant Plans, old Provider contracts/versions, service bindings, release/pin validators, owner page/domain, migration schemas, current Run status, D1 table dependencies, historical invocations, log/audit retention and backups. Classify Weixin-specific records separately from shared Workflow/Bark/Dub/EnvShare/Litterbox evidence. No plaintext credentials or messages in output.
+2. **Consumer functionality:** reuse existing static Bark catalog and encrypted Provider, add only the two missing trusted source modes, verify deny-path tests (forged tags/URLs, incomplete download, unknown Run, cancellations, races, duplicate notification and no plaintext), keep Q3=A. Test at real Cloudflare Workers runtime; do not create a second notification pipeline.
+3. **Migrate live definitions:** pause each affected Workflow independently, drain/adjudicate unsettled native attempts, validate and re-Publish a new Bark-pinned immutable Version, restore its prior Active state only after existing gates and owner-authorized production publication. Do not edit immutable historical Versions or replay uncertain sends. Verify OpenList phone click-through and Download true-success notification separately; preserve Chrome's already accepted evidence.
+4. **Fence old sends:** all remaining Weixin Plans, the paused test Plan, legacy `WEIXIN_ACTION_PROVIDER` and unified `ACTIONS` dispatch paths must be provably non-executable for Weixin. Freeze the shared migration gate only under the existing maintenance procedure; a global freeze also affects Bark and other Actions. Any necessary maintenance window, rollback with feature loss and action-schema compatibility must be reviewed before approval.
+5. **Retire executable surfaces:** remove Weixin IDs, runtime handlers, Owner pairing/setup routes, stale docs/Portal registration, source references, old Worker release routes, bindings and Weixin-only credentials through the existing protected publishers. Do not remove shared Bark encryption/device settings or the live `cloudflare-actions` Worker. Independently verify the actual deployed static catalog and that no removed Action can be dispatched.
+6. **Irreversible data purge (Q2=B):** identify each Weixin-specific receipt/audit dataset and every copy/retention constraint, ensure no Run/Plan/rollback path still reads it, verify a formally approved deletion target and irreversibility, then seek **fresh explicit production/destructive authorization**. Delete only the reviewed target via the existing protected maintenance process, independently confirm the post-deletion state and record the fact of deletion without storing former sensitive contents. No deletion or credential revocation is implicit in a merged PR or this design.
+7. **Independent acceptance:** checks/CI, exact Provider/Consumer versions, active Workflow definitions, actual Bark phone delivery and click-through/download E2E, old-action denial, physical Session lifecycle, and target-data absence are separate Pass/Not performed/Blocked findings; do not call the full retirement Pass before all are evidenced.
+
+### Remaining design frontier
+
+- OpenList Bark URL trust extension and whether to reuse the existing Chrome-only path with an explicit allowlist.
+- Download Bark “verified completion” proof: same single-item Task and no invented success or unapproved fallback.
+- Scope of permanent Weixin history deletion across original Provider D1, unified/shared audit and immutable Workflow records, plus service dependencies and backup retention.
+- Whether the existing historical Plan/rollback read paths must become **read-only tombstones/explicit errors**, rather than retaining send-capable legacy compatibility, before physical purge.
+
+**Safety stop:** The original [ADR-0001](adr/0001-single-worker-action-catalog.md) requires preserving receipts *during the previous migration*. This new final-state direction supersedes that retention outcome but **does not remove any present safety obligation**. If any prerequisite or new authorization is missing, stop at the last verified, non-destructive stage. Do not bypass a protected release or delete production data in a ChatGPT design session.
+
+---
+
 ## Current 2026-11-01 rollback compatibility gate (source-only; production NOT exercised)
 
 This section supersedes the older assumption that the physical `weixin-mcp-worker`

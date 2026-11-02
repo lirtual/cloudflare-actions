@@ -1,5 +1,16 @@
 # Unified Cloudflare Actions — bounded context (Spec #21)
 
+## 2026-11-02 proposed retirement — Owner round-1 decisions, design only
+
+The Owner confirmed Q1=A / Q2=B / Q3=A in [ADR-0002](../../docs/adr/0002-bark-only-weixin-retirement.md):
+**Bark-only for existing notification-bearing business Workflows** (`openlist`, `download`; `chrome` already migrated); no new notifications for `windows`, `ubuntu`, `code-server`. Retain strict failure and at-most-once semantics, no automatic fallback or retry. The **target end state** removes both `weixin.send_text` and `weixin.notify_download`, all executable Weixin code/bindings/pairing/Owner domain/release paths, and **permanently deletes Weixin-specific historical D1 receipts and audit evidence**, rather than keeping that history indefinitely. This is a *chosen future outcome*, not the current catalog or a production-deletion approval.
+
+Live catalog below is **still authoritative until protected migration and publication**. The older ADR-0001 and Spec #21 instructions to retain Weixin receipts governed the earlier unified-worker cutover and must remain in force during this retirement's unconfirmed stages. Protect immutable Plans, unknown historical Invocations, shared Worker release versions and unrelated Action histories; none may be silently rewritten or re-sent. Do not delete D1 tables, credentials, production Owner domain, Cloudflare resources, or historical Run metadata until later-round data-scope/compatibility choices and explicit irreversible-operation approval. Reuse the current Cloudflare Actions Worker, service binding, action gate, guarded CI/release and runtime proof; do not add another Provider or pipeline.
+
+**Proven live notification state:** Chrome → Bark signed Session Ready, encrypted notification, phone delivery and clickable temporary link passed on 2026-11-02 (Workflow Run `922b90fd-6953-43f8-b5cf-5380f74afc2c`); `openlist` still references `weixin.send_text` and `download` still references `weixin.notify_download`. The paused Weixin test Workflow also remains and needs retirement. OpenList Bark still needs source-reviewed signed Ready URL handling (the existing Bark handler currently restricts the trusted Session to Chrome). Download Bark still needs the existing single-item signed GitHub Task + physical terminal + remote hash-readback proof: a generic “Step succeeded” notification is not equivalent. Bark's Provider `accepted` is not proof of delivery to the handset.
+
+See the retirement design gate at the start of [Spec #21 cutover runbook](../../docs/spec-21-cutover.md). **The rest of this file records existing/historical behavior, not completed retirement.**
+
 The `cloudflare-actions` Worker is the single **physical runtime** for the
 static reviewed Action Catalog: `weixin.send_text`, `weixin.notify_download`,
 `bark.send_notification`, `dub.shorten_url`, `envshare.share_text`, and
