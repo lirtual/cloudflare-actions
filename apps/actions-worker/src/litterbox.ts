@@ -46,18 +46,30 @@ export function checkLitterboxDownloadUrl(value:unknown):value is string{
 const hex=(bytes:Uint8Array)=>Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
 export async function uploadLitterbox(env:Env,input:LitterboxInvocation,dispatch:typeof fetch=fetch){
  const fallback={status:'rejected' as const,input_digest:typeof input?.input_digest==='string'?input.input_digest:''};
- if(!UUID.test(input?.invocation_id??'')||!HEX.test(input?.input_digest??''))return fallback;
+ // Diagnostics are out-of-band logs, not Action output: the published Plan
+ // pins this exact manifest digest and immutable status-only RPC contract.
+ const rejected=(category:'invalid_invocation'|'invalid_file'|'contract_mismatch'|'upstream_http_4xx',
+  httpStatus?:number)=>{
+  console.warn('litterbox_upload_rejected',{
+   category,
+   ...(typeof input?.invocation_id==='string'&&UUID.test(input.invocation_id)
+    ?{invocation_id:input.invocation_id}:{}),
+   ...(httpStatus===undefined?{}:{http_status:httpStatus}),
+  });
+  return fallback;
+ };
+ if(!UUID.test(input?.invocation_id??'')||!HEX.test(input?.input_digest??''))return rejected('invalid_invocation');
  const params=checkLitterboxParams({
   file_name:input.file_name,size_bytes:input.size_bytes,sha256:input.sha256,time:input.time,
  });
  if(!params||!(input.bytes instanceof Uint8Array)||input.bytes.byteLength!==params.size_bytes||
-   input.bytes.byteLength>MAX_FILE_BYTES)return fallback;
+   input.bytes.byteLength>MAX_FILE_BYTES)return rejected('invalid_file');
  const identity=await getContract(env,LITTERBOX_MANIFEST);
  if(input.deployment_id!==identity.deployment_id||
    input.contract_digest!==identity.contract_digest||
    input.input_digest!==await digest(params)||
    params.sha256!==hex(new Uint8Array(await crypto.subtle.digest('SHA-256',new Uint8Array(input.bytes)))))
-  return fallback;
+  return rejected('contract_mismatch');
  const form=new FormData();
  form.append('reqtype','fileupload');
  form.append('time',params.time);
@@ -69,7 +81,7 @@ export async function uploadLitterbox(env:Env,input:LitterboxInvocation,dispatch
   });
  }catch{return {status:'unknown' as const,input_digest:input.input_digest};}
  if(response.status>=300&&response.status<400)return {status:'unknown' as const,input_digest:input.input_digest};
- if(response.status>=400&&response.status<500)return fallback;
+ if(response.status>=400&&response.status<500)return rejected('upstream_http_4xx',response.status);
  if(!response.ok)return {status:'unknown' as const,input_digest:input.input_digest};
  try{
   if(Number(response.headers.get('content-length')||0)>512)return {status:'unknown' as const,input_digest:input.input_digest};

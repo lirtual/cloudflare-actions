@@ -84,3 +84,43 @@ test('10 MiB boundary: exact size can form multipart once, 10 MiB +1 rejects bef
  assert.equal((await uploadLitterbox(env,tooLarge,async()=>{seen++;throw Error('oversize');})).status,'rejected');
  assert.equal(seen,1);
 });
+
+test('rejections emit bounded diagnostic categories without changing the pinned contract',async()=>{
+ const contract=await getContract(env,LITTERBOX_MANIFEST);
+ assert.equal(contract.contract_digest,
+  '1eaee3b7348d26e67808d41e3402941b77186418bd69149e594650430ad2bc3d');
+ const input=await request(new TextEncoder().encode('PRIVATE TEST BYTES MUST NEVER APPEAR IN LOGS'));
+ const entries:Array<{label:unknown;details:unknown}>=[];
+ const oldWarn=console.warn;
+ console.warn=(label:unknown,details:unknown)=>{entries.push({label,details});};
+ try{
+  let posts=0;
+  const unreachable=async()=>{posts++;throw Error('unexpected external POST');};
+  const invalid=await uploadLitterbox(env,{...input,invocation_id:'not-a-valid-uuid'},unreachable as any);
+  assert.deepEqual(invalid,{status:'rejected',input_digest:input.input_digest});
+  const badFile=await uploadLitterbox(env,{...input,file_name:'../secret.txt'},unreachable as any);
+  assert.equal(badFile.status,'rejected');
+  const mismatch=await uploadLitterbox(env,{...input,sha256:'0'.repeat(64)},unreachable as any);
+  assert.equal(mismatch.status,'rejected');
+  assert.equal(posts,0);
+  for(const status of [400,403,429]){
+   const answer=await uploadLitterbox(env,input,async()=>new Response(
+    'SECRET RESPONSE BODY MUST NEVER APPEAR IN LOGS',{status}));
+   assert.deepEqual(answer,{status:'rejected',input_digest:input.input_digest});
+  }
+  assert.deepEqual(entries,[
+   {label:'litterbox_upload_rejected',details:{category:'invalid_invocation'}},
+   {label:'litterbox_upload_rejected',details:{category:'invalid_file',invocation_id:input.invocation_id}},
+   {label:'litterbox_upload_rejected',details:{category:'contract_mismatch',invocation_id:input.invocation_id}},
+   ...[400,403,429].map(http_status=>({
+    label:'litterbox_upload_rejected',
+    details:{category:'upstream_http_4xx',invocation_id:input.invocation_id,http_status},
+   })),
+  ]);
+  const output=JSON.stringify(entries);
+  for(const privateValue of ['PRIVATE TEST BYTES','SECRET RESPONSE BODY',input.file_name,
+   input.sha256,input.input_digest,'../secret.txt']){
+   assert(!output.includes(privateValue),'private detail appeared in diagnostics');
+  }
+ }finally{console.warn=oldWarn;}
+});
