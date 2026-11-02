@@ -9,9 +9,6 @@
     "deploy:dry-run": "wrangler deploy --dry-run --outdir .build/actions",
     "check": "pnpm typecheck && pnpm test && pnpm deploy:dry-run && node --test tests/*workerd.test.mjs"
   },
-  "dependencies": {
-    "qrcode-generator": "2.0.4"
-  },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261006.1",
     "@types/node": "24.19.2",
