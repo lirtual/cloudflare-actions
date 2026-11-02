@@ -1,3 +1,23 @@
+## Spec #54 T6 superseding maintenance rule — source only (2026-11-02)
+
+The former Spec #21 exact-version recovery procedure below is **retired**,
+not executable. Its old Provider versions expose `weixin.send_text` and
+`weixin.notify_download` (and at least one omits Litterbox); no Bark-only
+complete rollback candidate has been independently verified. T6 protected
+maintenance now *rejects all rollback requests* before production API calls
+or Secret loading. Preserve the most recent safe running Worker; never use
+the old dedicated Weixin/Bark publishers or Owner-domain handoff.
+
+T6's sole maintained `release-actions.yml` Upgrade path is manual,
+Owner-reviewed and frozen/drained, requires exact currently deployed Consumer
+and Provider IDs/pin, historical receipt count, six native instance states
+and reviewed Bark-only source/workerd tests. Upgrade does not repin the
+Consumer or reopen the gate. Those are separate authorized operations.
+Removing Weixin code/required bindings from the source **does not** revoke
+Secret bytes/previous Worker Versions or upstream permission: T7 must confirm
+physical denial. No D1 records, receipts or secrets have been deleted.
+The remainder of this Spec #21 runbook is historical provenance.
+
 ## Current 2026-11-01 rollback compatibility gate (source-only; production NOT exercised)
 
 This section supersedes the older assumption that the physical `weixin-mcp-worker`

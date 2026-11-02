@@ -1,5 +1,35 @@
 # Cloudflare Actions
 
+## Spec #54 · T6 Provider Bark-only candidate (2026-11-02)
+
+**Source and CI only; not deployed.** The sole maintained runtime remains
+`cloudflare-actions` with one `ActionsEntrypoint` Service Binding. Current
+candidate exposes exactly four reviewed Actions: `bark.send_notification`,
+`dub.shorten_url`, `envshare.share_text`, `litterbox.upload_file`.
+`getContract`, `execute`, `getReceipt` and `getBinding` reject every
+Weixin Action identity and historic digest; default Owner HTTP route returns
+404. Legacy Weixin Handler, QR/Owner modules and separate Weixin/Bark release
+workflows were removed from the *source tree*, without touching Cloudflare
+Workers, historical receipts, production D1 or credentials.
+
+The **existing** protected `release-actions.yml` maintenance entrypoint
+accepts only separately approved `upgrade`, with exact live Provider and
+Consumer version IDs/pin, frozen Action Gate, zero active Workflows, zero
+unsettled Runs, unchanged historical receipt count and all six native instance
+states empty. All `rollback` requests fail closed: older retained versions
+execute Weixin or lack required other Actions, and no Bark-only rollback
+candidate is independently proven. The release never automatically thaws
+business workflows, re-pins Consumer or revokes a Secret. Protected Provider
+release, Consumer pin update, and eventual legacy Secret/domain revocation
+are **separate explicit production operations** (T6/T7).
+
+The previous 2026-11-01 inventory and all prior provider/rollback procedures
+*below* are historical, not instructions to run old publishers. Live T5
+Consumer is already Bark-only; live Provider still remains the previous
+Weixin-capable binary until a separately authorized release. Record any
+production change against [T6 #60](https://github.com/lirtual/cloudflare-actions/issues/60).
+
+
 > **Latest phase acceptance — 2026-11-01 (Spec #21 remains Open; Spec #35 Closed).**
 > One production `cloudflare-actions` Worker provides the unified static Action catalog;
 > Workflow Consumer uses the single `ACTIONS -> cloudflare-actions#ActionsEntrypoint`

@@ -1,83 +1,53 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {verifyActionsSource,verifyActionsPreflight,verifyOwnerRebindCutoverSnapshot,inspectActionsDeployment,REQUIRED_KEYS} from './actions-release-guard.mjs';
-const conf=JSON.parse(readFileSync(new URL('../apps/actions-worker/wrangler.jsonc',import.meta.url)));
-test('unified Worker stages without Owner domain, reuses original D1 and requires three Secrets',()=>{
- assert.equal(verifyActionsSource(conf),true);
- for(const bad of [{...conf,routes:[{pattern:'weixin.lirtual.dpdns.org',custom_domain:true}]},{...conf,d1_databases:[]},{...conf,secrets:{required:['WEIXIN_ENCRYPTION_KEY']}},
-  {...conf,workers_dev:true},{...conf,services:[{binding:'EXTRA'}]}])
-  assert.throws(()=>verifyActionsSource(bad),/blocked/);
-});
-test('active runtime must have one version, owner identity and all 3 separately provisioned Secrets',()=>{
- const version='33333333-3333-4333-8333-333333333333';
- const deployments={deployments:[{versions:[{version_id:version,percentage:100}]}]};
- const settings={bindings:[{name:'DB',type:'d1',id:conf.d1_databases[0].database_id},
-   {name:'ADMIN_HOST',type:'plain_text',text:'weixin.lirtual.dpdns.org'},
-   {name:'CF_VERSION_METADATA',type:'version_metadata'},...REQUIRED_KEYS.map(name=>({name,type:'secret_text'}))]};
- const secrets=REQUIRED_KEYS.map(name=>({name}));
- assert.equal(verifyActionsPreflight({activeVersions:deployments,settings,secrets}),version);
- for(const name of REQUIRED_KEYS){
-  assert.throws(()=>verifyActionsPreflight({activeVersions:deployments,settings,
-   secrets:secrets.filter(x=>x.name!==name)}),/blocked/);
+import {verifyActionsSource,verifyActionsPreflight,inspectActionsDeployment,REQUIRED_KEYS} from './actions-release-guard.mjs';
+const cfg=JSON.parse(readFileSync(new URL('../apps/actions-worker/wrangler.jsonc',import.meta.url)));
+const version='33333333-3333-4333-8333-333333333333';
+const deployments={deployments:[{versions:[{version_id:version,percentage:100}]}]};
+const bindings=[{name:'CF_VERSION_METADATA',type:'version_metadata'},
+ ...REQUIRED_KEYS.map(name=>({name,type:'secret_text'}))];
+const secrets=REQUIRED_KEYS.map(name=>({name}));
+test('Bark-only source excludes Weixin Owner configs and future services',()=>{
+ assert.equal(verifyActionsSource(cfg),true);
+ assert.deepEqual(REQUIRED_KEYS,['BARK_DEVICE_KEY','BARK_ENCRYPTION_KEY']);
+ assert.equal(cfg.d1_databases,undefined);
+ assert.equal(cfg.vars,undefined);
+ for(const p of [
+  {secrets:{required:[...REQUIRED_KEYS,'WEIXIN_ENCRYPTION_KEY']}},
+  {d1_databases:[{binding:'DB'}]},
+  {vars:{ADMIN_HOST:'weixin.lirtual.dpdns.org'}},
+  {routes:[{pattern:'example.net'}]},
+  {workers_dev:true},{services:[{binding:'OLD'}]},{preview_urls:true},
+  {secrets:{required:['BARK_DEVICE_KEY']}}]){
+  assert.throws(()=>verifyActionsSource({...cfg,...p}),/blocked/);
  }
- assert.throws(()=>verifyActionsPreflight({activeVersions:{deployments:[{versions:[]}]},settings,secrets}),/blocked/);
 });
-
-test('fresh key cutover requires completed old-owner unbind and preserved receipts',()=>{
- const cleared={generation:2,state:'unbound',session_ciphertext:null,session_key_id:null,
-   lease_holder:null,lease_until:null};
- const expired={phase:'expired',ciphertext:null,key_id:null};
- assert.deepEqual(verifyOwnerRebindCutoverSnapshot({
-   binding:cleared,pairing:expired,receiptCount:15,minimumReceiptCount:15
- }),{generation:2,receipts:15,ready_for_new_key:true});
- for(const binding of [
-   {...cleared,state:'ready'},
-   {...cleared,session_ciphertext:'old-key-ciphertext'},
-   {...cleared,session_key_id:'1'},
-   {...cleared,lease_holder:'stale',lease_until:999},
-   {...cleared,generation:0},
- ]){
-   assert.throws(()=>verifyOwnerRebindCutoverSnapshot({
-     binding,pairing:expired,receiptCount:15,minimumReceiptCount:15
-   }),/blocked/);
+test('exact live Provider version and Bark bindings, while physical legacy secret still awaits T7',()=>{
+ assert.equal(verifyActionsPreflight({activeVersions:deployments,settings:{bindings},secrets}),version);
+ const legacy={name:'WEIXIN_ENCRYPTION_KEY',type:'secret_text'};
+ assert.equal(verifyActionsPreflight({activeVersions:deployments,
+  settings:{bindings:[...bindings,legacy]},secrets:[...secrets,{name:legacy.name}]}),version);
+ for(const b of [bindings.slice(1),[...bindings,{name:'MCP_ACCESS_TOKEN',type:'secret_text'}],
+  [...bindings,{name:'ACTIONS',type:'service'}],bindings.filter(x=>x.name!=='BARK_DEVICE_KEY')]){
+  assert.throws(()=>verifyActionsPreflight({activeVersions:deployments,settings:{bindings:b},secrets}),/blocked/);
  }
- for(const pairing of [{phase:'qr_pending',ciphertext:'still-encrypted',key_id:'1'},
-   {phase:'expired',ciphertext:'still-encrypted',key_id:'1'}]){
-   assert.throws(()=>verifyOwnerRebindCutoverSnapshot({
-     binding:cleared,pairing,receiptCount:15,minimumReceiptCount:15
-   }),/blocked/);
+ for(const items of [[],[{version_id:version,percentage:50}],
+  [{version_id:version,percentage:100},{version_id:version,percentage:0}]]){
+  assert.throws(()=>verifyActionsPreflight({
+   activeVersions:{deployments:[{versions:items}]},settings:{bindings},secrets}),/blocked/);
  }
- assert.throws(()=>verifyOwnerRebindCutoverSnapshot({
-   binding:cleared,pairing:null,receiptCount:14,minimumReceiptCount:15
- }),/blocked/);
- assert.equal(verifyOwnerRebindCutoverSnapshot({
-   binding:cleared,pairing:null,receiptCount:15,minimumReceiptCount:15
- }).ready_for_new_key,true);
 });
-
-
-test('unified runtime readback performs only GET and rejects unreviewed Version ID',async()=>{
- const id='33333333-3333-4333-8333-333333333333';
- const deploy={deployments:[{versions:[{percentage:100,version_id:id}]}]};
- const settings={bindings:[
-  {name:'DB',type:'d1',id:conf.d1_databases[0].database_id},
-  {name:'ADMIN_HOST',type:'plain_text',text:'weixin.lirtual.dpdns.org'},
-  {name:'CF_VERSION_METADATA',type:'version_metadata'},
-  ...REQUIRED_KEYS.map(name=>({name,type:'secret_text'}))
- ]};
- const secrets=REQUIRED_KEYS.map(name=>({name}));
- const calls=[];
- const fake=async (url,options)=>{
-  calls.push({url,options});
-  const result=url.endsWith('/settings')?settings:url.endsWith('/secrets')?secrets:deploy;
+test('Cloudflare Provider audit reads only GET, never secret values',async()=>{
+ let calls=0;
+ const fake=async(url,init)=>{
+  calls++;assert.equal(init.method,undefined);assert.equal(init.redirect,'manual');
+  const result=url.endsWith('/settings')?{bindings}:url.endsWith('/secrets')?secrets:deployments;
   return {ok:true,json:async()=>({success:true,result})};
  };
- const env={CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_API_TOKEN:'fixture-token'};
- assert.equal(await inspectActionsDeployment(env,id,fake),id);
- assert.equal(calls.length,3);
- assert.equal(calls.every(x=>x.options.redirect==='manual'&&
-  x.options.headers.Accept==='application/json'&&!x.options.method),true);
+ const env={CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_API_TOKEN:'fake'};
+ assert.equal(await inspectActionsDeployment(env,version,fake),version);
+ assert.equal(calls,3);
  await assert.rejects(()=>inspectActionsDeployment(env,'44444444-4444-4444-8444-444444444444',fake),/drift/);
- await assert.rejects(()=>inspectActionsDeployment({},id,fake),/blocked/);
+ await assert.rejects(()=>inspectActionsDeployment({},version,fake),/blocked/);
 });

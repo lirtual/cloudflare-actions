@@ -5,17 +5,11 @@ import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 const script=readFileSync(new URL('../.build/actions/index.js',import.meta.url),'utf8');
 const version='33333333-3333-4333-8333-333333333333';
 const requestId='11111111-1111-4111-8111-111111111111';
-const domain='weixin-owner.example.org';
-const migration=['0001_owner.sql','0002_send_rejection_codes.sql']
- .map(name=>readFileSync(new URL('../../weixin-mcp-worker/migrations/'+name,import.meta.url),'utf8')).join('\n');
 function fixture(caller,{dubRedirectMode='original',dubPublicStats=false}={}){
  let external=0,dubTarget='';
  const mf=new Miniflare(convertV4MiniflareOptions({port:0,workers:[
   {name:'cloudflare-actions',modules:true,script,compatibilityDate:'2026-09-15',
-   d1Databases:{DB:'actions-test'},bindings:{CF_VERSION_METADATA:{id:version},
-    ADMIN_HOST:domain,ACCESS_TEAM_DOMAIN:'example.cloudflareaccess.com',
-    ACCESS_AUD:'test',OWNER_EMAIL:'owner@example.org',
-    WEIXIN_ENCRYPTION_KEY:Buffer.alloc(32,17).toString('base64'),
+   bindings:{CF_VERSION_METADATA:{id:version},
     BARK_DEVICE_KEY:'12345678901234567890',
     BARK_ENCRYPTION_KEY:'12345678901234567890123456789012'},
    outboundService:async request=>{
@@ -59,41 +53,41 @@ function fixture(caller,{dubRedirectMode='original',dubPublicStats=false}={}){
  return {mf,external:()=>external};
 }
 
-test('one workerd binding exposes six reviewed contracts, historic receipts and no public send surface',async()=>{
+test('one real workerd Service Binding has four pinned Actions and zero Weixin/Owner routes',async()=>{
  const caller=`export default {async fetch(request,env){const q=new URL(request.url).searchParams;
-   const action=q.get('action');try{
-    if(q.has('list'))return Response.json(await env.ACTIONS.listActions());
-    if(q.has('contract'))return Response.json(await env.ACTIONS.getContract(action,q.has('digest')?q.get('digest'):undefined));
-    if(q.has('receipt'))return Response.json(await env.ACTIONS.getReceipt(action,{
-     invocation_id:'${requestId}',binding_generation:1,input_digest:'${'f'.repeat(64)}'}));
-    return Response.json(await env.ACTIONS.execute(action,{}));
-   }catch(e){return new Response(e.message,{status:403});}}};`;
+  const action=q.get('action');
+  try{
+   if(q.has('list'))return Response.json(await env.ACTIONS.listActions());
+   if(q.has('contract'))return Response.json(await env.ACTIONS.getContract(action,q.has('digest')?q.get('digest'):undefined));
+   if(q.has('receipt'))return Response.json(await env.ACTIONS.getReceipt(action,{}));
+   if(q.has('binding'))return Response.json(await env.ACTIONS.getBinding(action));
+   return Response.json(await env.ACTIONS.execute(action,{}));
+  }catch(e){return new Response(e.message,{status:403});}}};`;
  const {mf,external}=fixture(caller);
  try{
-  const db=await mf.getD1Database('DB');
-  await db.batch(migration.split(String.fromCharCode(10)).filter(line=>!line.trim().startsWith('--')).join(String.fromCharCode(10)).split(';').map(x=>x.trim()).filter(Boolean).map(sql=>db.prepare(sql)));
   const client=await mf.getWorker('caller');
   const get=path=>client.fetch('https://caller.example/'+path);
-  const listed=await(await get('?list=1')).json();
-  assert.deepEqual(listed.map(x=>x.action_id),['dub.shorten_url','envshare.share_text','litterbox.upload_file','bark.send_notification','weixin.send_text','weixin.notify_download']);
-  for(const action of ['dub.shorten_url','envshare.share_text','litterbox.upload_file','bark.send_notification','weixin.send_text','weixin.notify_download']){
-   const result=await(await get('?contract=1&action='+action)).json();
-   assert.equal(result.deployment_id,version);
-   assert.match(result.contract_digest,/^[a-f0-9]{64}$/);
-   if(action==='weixin.send_text')assert.equal(result.manifest.version,3);
-   const pinned=await(await get('?contract=1&action='+action+'&digest='+result.contract_digest)).json();
-   assert.deepEqual(pinned,result);
+  const list=(await(await get('?list=1')).json()).map(x=>x.action_id);
+  assert.deepEqual(list,['dub.shorten_url','envshare.share_text','litterbox.upload_file','bark.send_notification']);
+  for(const action of list){
+   const current=await(await get('?contract=1&action='+action)).json();
+   assert.equal(current.deployment_id,version);
+   assert.match(current.contract_digest,/^[a-f0-9]{64}$/);
+   assert.deepEqual(await(await get('?contract=1&action='+action+'&digest='+current.contract_digest)).json(),current);
    assert.equal((await get('?contract=1&action='+action+'&digest='+('0'.repeat(64)))).status,403);
+   assert.equal((await get('?receipt=1&action='+action)).status,403);
+   assert.equal((await get('?binding=1&action='+action)).status,403);
   }
-  assert.equal((await get('?contract=1&action=arbitrary.http')).status,403);
-  await db.prepare(`INSERT INTO weixin_send_receipts(generation,request_id,text_digest,status,created_at,updated_at)
-   VALUES(1,? ,?,'unknown',1,1)`).bind(requestId,'f'.repeat(64)).run();
-  assert.equal((await(await get('?receipt=1&action=weixin.send_text')).json()).status,'unknown');
-  assert.equal((await get('?receipt=1&action=bark.send_notification')).status,403);
-  assert.equal((await get('?receipt=1&action=dub.shorten_url')).status,403);
-  assert.equal((await get('?receipt=1&action=envshare.share_text')).status,403);
-  assert.equal((await mf.dispatchFetch('https://weixin-owner.example.org/mcp')).status,404);
-  assert.equal((await mf.dispatchFetch('https://weixin-owner.example.org/setup')).status,403);
+  for(const legacy of ['weixin.send_text','weixin.notify_download','weixin.legacy_send']){
+   for(const operation of ['contract=1&','receipt=1&','binding=1&','']){
+    const uri='?'+operation+'action='+legacy;
+    assert.equal((await get(uri)).status,403,uri);
+   }
+  }
+  for(const uri of ['https://weixin-owner.example.org/','https://weixin-owner.example.org/setup',
+   'https://weixin-owner.example.org/qr','https://weixin-owner.example.org/mcp']){
+   assert.equal((await mf.dispatchFetch(uri)).status,404,uri);
+  }
   assert.equal(external(),0);
  }finally{await mf.dispose();}
 });

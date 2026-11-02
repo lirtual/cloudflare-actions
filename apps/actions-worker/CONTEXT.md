@@ -1,3 +1,24 @@
+## Spec #54 T6 · Active source boundary (2026-11-02)
+
+The reviewed candidate `cloudflare-actions` now compiles only four Actions:
+Bark, Dub, EnvShare and Litterbox. Old Weixin Handler, QR/Owner HTTP,
+Worker source modules, public owner pages and dedicated publisher paths are
+removed from source. `ACTIONS` remains the sole private Service Binding;
+the Worker default fetch returns 404. All Weixin action IDs, old digests,
+`execute`, `getContract`, `getReceipt`, `getBinding` reject, never
+interpreting an old authorization as a fresh send grant. Existing shared
+non-Weixin contracts are unchanged.
+
+**T6 source acceptance is not physical retirement.** Protected maintenance
+requires fresh Owner production authorization, frozen/drained Consumer,
+exact live Consumer/Provider pin and receipt readback, followed by a separate
+Consumer repin and gate reopening approval. No retained prior Provider
+version has a verified Bark-only full catalog: current rollback is always
+rejected. Keep last safe version; no fallback to Weixin. Previously deployed
+Weixin Secret, old version, Owner domain, D1 records and upstream grant must
+be independently retired under T7/T8 authorization. Prior instructions below
+describe *historical behavior*, not current approved procedures.
+
 # Unified Cloudflare Actions — bounded context (Spec #21)
 
 The `cloudflare-actions` Worker is the single **physical runtime** for the
