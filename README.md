@@ -129,3 +129,20 @@ modified by the source-only cleanup.
 ## Bark encrypted notifications
 
 The private, one-device Bark Action Provider is specified in [apps/bark-provider/README.md](apps/bark-provider/README.md). It has an independent reviewed GitHub Actions manual release and does not change the Weixin Worker.
+
+### Litterbox safe rejection diagnostics
+
+The private `litterbox.upload_file` Action keeps its immutable published
+manifest, output status (`accepted` / `rejected` / `unknown`), and one-shot
+dispatch semantics. Only for a definitive rejection, Worker observability
+logs the event `litterbox_upload_rejected` with a fixed category:
+`invalid_invocation`, `invalid_file`, `contract_mismatch`, or
+`upstream_http_4xx`. The last category records the numeric 400–499 HTTP
+status, but never the response body. A syntactically valid per-invocation UUID
+is logged to correlate with the existing D1 admission receipt. No file bytes,
+name, hash, token, signed URL, user metadata, or upstream body is logged.
+Timeouts, redirects and uncertain responses remain `unknown` and must never
+be automatically retried. This is diagnostic source code only until the
+separately authorized protected Provider release; deploying a new Provider
+version would change its deployment ID and requires reviewing the pinned
+Workflow Consumer and Published Plan compatibility before release.
