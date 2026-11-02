@@ -22,6 +22,23 @@ classification, T8 deletion and T9 irrecoverability remain distinct gates.
 The present protected release workflow accepts only approved upgrade and
 fails closed for rollback; it does **not** implement Secret/domain removal.
 
+**T7 protected historical Version retirement candidate (not yet released):**
+The existing manual `release-actions.yml` supports a separately approved
+`retire-version` mode, deleting **exactly one** allowlisted legacy Provider
+Version after checking a frozen gate, zero Active Workflows/unsettled Runs,
+six empty native states, precise current Consumer/Provider pin and the
+unchanged Weixin receipt count. The beta Worker Versions API is used through
+the **same protected GitHub Actions publisher**, not an alternate deployment
+channel. A preflight file freezes the reviewed Version ID inventory; the
+DELETE is issued once, and postflight must establish that the target alone
+vanished while the current safe Provider remains deployed. An ambiguous
+DELETE result is **not** permission to retry. No source merge constitutes
+approval to run the destructive operation. This mode does **not** remove
+the current inherited Secret, custom domain, shared D1 or any receipt, and
+the Owner-reported WeChat-side unbinding is outside further scope. For
+full acceptance, each production operation and residual risk requires its
+own explicit approval and separate readback.
+
 **Everything below records earlier Spec #21/#35 history and previous
 operator decisions; historical Action names and procedures are not currently
 runnable or authorized for production.**

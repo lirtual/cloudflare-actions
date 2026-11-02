@@ -19,10 +19,10 @@ on:
         default: none
         options: [none]
       maintenance_operation:
-        description: 'No safe Bark-only rollback candidate currently exists'
+        description: 'Reviewed upgrade, blocked rollback, or separately authorized T7 version retirement'
         type: choice
         required: true
-        options: [upgrade, rollback]
+        options: [upgrade, rollback, retire-version]
       maintenance_approved:
         type: boolean
         required: true
@@ -43,6 +43,16 @@ on:
         description: 'Exact historical Weixin receipt count; read-only'
         type: string
         required: true
+      retire_version_approved:
+        description: 'T7: independently approved deletion of exactly one reviewed historical Provider Version'
+        type: boolean
+        required: false
+        default: false
+      retire_version_id:
+        description: 'T7: exact, pre-reviewed legacy Provider Version UUID; no ranges or latest'
+        type: string
+        required: false
+        default: ''
       rollback_target_version:
         description: 'Reserved for future reviewed Bark-only rollback candidate; currently rejected'
         type: string
@@ -57,7 +67,8 @@ jobs:
           github.actor == 'lirtual' && inputs.deploy_to_production == false &&
           inputs.actions_old_ingress_quiesced == false && inputs.domain_operation == 'none' &&
           inputs.maintenance_approved == true && inputs.maintenance_quiesced == true &&
-          (inputs.maintenance_operation == 'upgrade' || inputs.maintenance_operation == 'rollback') }}
+          (inputs.maintenance_operation == 'upgrade' || inputs.maintenance_operation == 'rollback' ||
+           (inputs.maintenance_operation == 'retire-version' && inputs.retire_version_approved == true)) }}
     runs-on: ubuntu-latest
     concurrency:
       group: cloudflare-actions-production
@@ -88,6 +99,7 @@ jobs:
       - name: Check source, immutable contract and maintenance gate offline
         run: pnpm run check
       - name: Inspect current version, immutable Secrets, private binding and drained frozen Workflow
+        if: ${{ inputs.maintenance_operation != 'retire-version' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -99,7 +111,23 @@ jobs:
           ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
           ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
         run: node scripts/actions-protected-upgrade.mjs preflight
+      - name: T7 verify one reviewed historical Version, frozen gate and no Native runs (no write)
+        if: ${{ inputs.maintenance_operation == 'retire-version' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
+          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
+          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
+          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
+          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
+          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
+          ACTIONS_RETIRE_VERSION_APPROVED: ${{ inputs.retire_version_approved }}
+          ACTIONS_RETIRE_VERSION_ID: ${{ inputs.retire_version_id }}
+        run: node scripts/actions-retire-legacy-version.mjs preflight
       - name: Publish one reviewed maintenance operation without touching Secrets, D1 or Owner route
+        if: ${{ inputs.maintenance_operation != 'retire-version' }}
         id: publish
         shell: bash
         env:
@@ -136,6 +164,7 @@ jobs:
           EXPECTED_VERSION_ID="$version" node scripts/actions-protected-upgrade.mjs verify-new
           echo "version_id=$version" >> "$GITHUB_OUTPUT"
       - name: Independently read back version, original D1, Secret names and quiesced Workflow
+        if: ${{ inputs.maintenance_operation != 'retire-version' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -150,3 +179,34 @@ jobs:
         run: |
           node scripts/actions-release-guard.mjs readback
           node scripts/actions-protected-upgrade.mjs postflight
+
+      - name: T7 delete only the exact approved historical Worker Version (no retry)
+        if: ${{ inputs.maintenance_operation == 'retire-version' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
+          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
+          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
+          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
+          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
+          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
+          ACTIONS_RETIRE_VERSION_APPROVED: ${{ inputs.retire_version_approved }}
+          ACTIONS_RETIRE_VERSION_ID: ${{ inputs.retire_version_id }}
+        run: node scripts/actions-retire-legacy-version.mjs retire
+      - name: T7 independently verify exactly one old Version absent, all others retained
+        if: ${{ inputs.maintenance_operation == 'retire-version' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
+          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
+          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
+          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
+          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
+          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
+          ACTIONS_RETIRE_VERSION_APPROVED: ${{ inputs.retire_version_approved }}
+          ACTIONS_RETIRE_VERSION_ID: ${{ inputs.retire_version_id }}
+        run: node scripts/actions-retire-legacy-version.mjs postflight
