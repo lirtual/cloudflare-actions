@@ -78,3 +78,20 @@ This annex consolidates **existing, redacted T3 evidence** from [#57's original 
 4. **T8/T9 prerequisite:** classify *exact target identity and dependent readers*, prove no-replay and effective old-code send denial, then obtain a fresh production/destructive scope approval. T8 is live deletion only; T9 alone checks expired or attested irreversible recovery state. This annex grants neither.
 
 Use the **existing #57 evidence thread and this ADR**, not a new classifier database, destructive script or parallel history/tombstone store. Keep T3 open until the above blockers have valid evidence.
+
+
+### T3 exact-16 Weixin literal content triage (2026-11-02; narrowly authorized read-only)
+
+A one-time, explicitly Owner-authorized production D1 `SELECT` inspected **only** the nonempty literal `$.with.input.text` values inside compiled immutable `workflow_versions.plan` Steps with the historical Weixin Cloudflare Action identity. The query contained an **exactly 16 distinct Plan Version** condition; no other stored field, Run content, secret, export or backup was read. All actual strings remained inside the read executor for local rule-based triage and **were not returned in tool output, chats, Issue comments, files or logs**. D1 returned `rows_written=0`.
+
+| Triage grouping | Plan Versions | Distinct literal texts |
+| --- | ---: | ---: |
+| No common high-risk textual indicator detected | 13 | 4 |
+| Numeric sequence or template marker; ambiguous and requires review | 3 | 3 |
+| Matched strong risk patterns (URL, email, phone/ID shape, secret assignment, long token, network address or labeled personal field) | 0 | 0 |
+| **Total** | **16** | **7** |
+
+Observed literal lengths were 15–37 characters. These results confirm the older **16 Versions / 7 literals** snapshot for this exact, narrowly scoped subset but do not revalidate other D1 classifications or historical references. **Automated regex and shape detection is not human semantic review**; no indicator is *not* proof that a value is non-sensitive. The three ambiguous texts cannot be classified as sensitive or non-sensitive from the permitted aggregate signals. Even the 13 texts without detected patterns lack a verified non-sensitive attestation. A Q2=B / Q8=A *actual* content-versus-immutability conflict was **not proven or ruled out**.
+
+**Retained blockers:** do not redact/overwrite/delete immutable Plan JSON; the earlier blocked fine-grained Run-reference query for four Weixin-only Plan Versions was **not retried or rerouted**; controlled manual/external copies, dependency readers, other JSON-bearing fields (`workflows.draft`, `runs.inputs`, `runs.result`, `run_steps.output`) and effective old-Code/T7 send authority remain separately unverified. T8/T9 irreversible cleanup has no approval. Scope of this checkpoint was production **read-only** and did not include any Run, Worker, Action, Secret, Gate or Workflow change.
+
