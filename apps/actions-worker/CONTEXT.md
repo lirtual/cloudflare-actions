@@ -2,7 +2,7 @@
 
 The current Provider Version `960ade68-149a-469c-a4fe-2c5e678df49c`
 is deployed at 100%; the matching Consumer Version
-`9e1845a0-166a-4576-8168-78a19203aa52` is also deployed at 100%
+`8420fe1e-c67f-4a61-91ef-375b8686b77d` is also deployed at 100%
 and pins it through the single private `ACTIONS` binding. The compiled
 Action catalog is exactly Bark, Dub, EnvShare and Litterbox, with immutable
 contracts. The Provider rejects historical Weixin actions on the current
@@ -23,7 +23,7 @@ The protected release workflow accepts reviewed upgrade and per-version
 T7 retirement, rejects rollback, and does **not** implement Secret/domain
 removal.
 
-**T7 protected historical Version retirement candidate (not yet released):**
+**T7 protected historical Version retirement (first Version removed):**
 The existing manual `release-actions.yml` supports a separately approved
 `retire-version` mode, deleting **exactly one** allowlisted legacy Provider
 Version after checking a frozen gate, zero Active Workflows/unsettled Runs,
@@ -38,7 +38,14 @@ approval to run the destructive operation. This mode does **not** remove
 the current inherited Secret, custom domain, shared D1 or any receipt, and
 the Owner-reported WeChat-side unbinding is outside further scope. For
 full acceptance, each production operation and residual risk requires its
-own explicit approval and separate readback.
+own explicit approval and separate readback. The exact Version #1
+`f663dc66-33fd-4292-ba95-49ac12e26b36` was deleted once through
+[protected Run #41445701354](https://github.com/lirtual/cloudflare-actions/actions/runs/41445701354), and the existing Consumer release
+[Run #41445936550](https://github.com/lirtual/mcp-workers/actions/runs/41445936550)
+reopened the gate and restored the original six business Workflows. Independent
+readback preserved Version #7, Versions #2–#6, immutable Plans and 20 Weixin
+receipts. See [T7 recorded evidence](https://github.com/lirtual/cloudflare-actions/issues/61#issuecomment-6577368084).
+Remaining production deletions each require new scoped authorization.
 
 **Everything below records earlier Spec #21/#35 history and previous
 operator decisions; historical Action names and procedures are not currently
