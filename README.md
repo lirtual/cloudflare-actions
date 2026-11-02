@@ -25,13 +25,16 @@ still has inherited `WEIXIN_ENCRYPTION_KEY` Secret metadata; seven historical
 Provider Versions remain listed, and `weixin.lirtual.dpdns.org` still has
 an enabled Worker custom domain. Source and GitHub rollback guards are not
 proof that an old binary cannot be restored by a privileged Cloudflare user.
-The retired Owner UI's local unbind explicitly did **not** revoke the
-Tencent/iLink upstream authorization. T7 requires an independently verified
-upstream revocation/invalidity mechanism, exact old-version and route
-invalidations, and **separate production configuration/credential approval**.
-The existing protected `release-actions.yml` currently permits reviewed
-upgrade but rejects rollback; it does not itself perform T7 Secret/domain
-retirement. Historical 20 Weixin receipts (including 7 unknown) and shared
+The retired Owner UI's local unbind was not independently proven to revoke
+Tencent/iLink upstream authorization; the Owner reports having already
+unbound WeChat and explicitly excludes further upstream-side work. T7
+continues with **project-controlled** old-version/route invalidation and
+separately authorized production configuration/credential operations, without
+claiming an independent upstream verification. The existing manual protected
+`release-actions.yml` supports reviewed upgrade and an explicitly approved,
+**one-version-at-a-time** T7 historical Version retirement; unsafe rollback
+remains denied. The new retirement mode is source/CI-only until separately
+approved for production, and does not remove the inherited Secret/domain. Historical 20 Weixin receipts (including 7 unknown) and shared
 immutable Plan/Run data remain untouched. T8 irreversible purge and T9
 recovery-window acceptance are separate gates.
 
