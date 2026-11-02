@@ -378,36 +378,82 @@ Cloudflare snapshot showed zero nonterminal native Workflow instances, but
 this cannot prevent a new old-version admission. No production cutover
 was performed.
 
-## Subsequent protected Worker upgrade / rollback (proposal; not yet released)
+## Subsequent protected Provider maintenance (deployed release contract)
 
-The existing `.github/workflows/release-actions.yml` is the sole production
-publisher. Its initial cutover remains **first-deployment only**. The new
-`protected-maintenance` branch, when merged, supports Owner-dispatched
-`upgrade` and exact-version `rollback` only; it cannot be triggered by a
-regular merge or CI success. Both operations require a separate explicit
-production authorization.
+The existing `lirtual/cloudflare-actions/.github/workflows/release-actions.yml`
+is the sole production Provider publisher. The `protected-maintenance` job
+is already installed; it requires a **new, explicit Owner production approval**,
+the exact reviewed Provider version and historical Weixin receipt count, and
+`maintenance_quiesced=true`. Push/PR/CI never trigger this path. Do not
+reuse the first-deployment branch for subsequent maintenance.
 
-Before either operation, the Owner must pause all business Workflows and
-independently freeze the existing D1 Action admission gate. The protected job
-checks that the reviewed active Provider version is exactly 100% deployed, the
-three existing Secret **names**, original D1, sole Consumer `ACTIONS` binding
-and Owner domain are intact; that the gate is frozen, no nonterminal Runs or
-native Workflow instances remain; and that the historical receipt baseline
-has not changed. It then rechecks these just before the production write.
+### Coordinated diagnostic upgrade — no production approval implied
 
-For **upgrade**, Wrangler deploys the reviewed main source with
-`--keep-vars` and **without any secrets file or key generation**, preserving
-the existing encryption key and binding. For **rollback**, Wrangler targets
-only the independently approved prior Worker Version ID, never an inferred
-"previous" version. Both independently read back the exact resulting Version,
-required binding/Secret names, Owner route, frozen gate and original receipts.
-No step changes D1, the Owner domain, or sends a notification.
+Read-only investigation of the Litterbox failure recorded by
+[lirtual/mcp-workers PR #678](https://github.com/lirtual/mcp-workers/pull/678)
+and the bounded rejection logging fix
+[cloudflare-actions PR #51](https://github.com/lirtual/cloudflare-actions/pull/51)
+identified **no necessary Worker code or Action contract changes**.
+Deploying PR #51 alone would rotate the Provider's Version ID while the
+Consumer and previously Published Plans still pin the old ID.
 
-A changed Provider Version invalidates the old immutable Workflow deployment
-pins. Therefore **no automatic gate thaw or Workflow Resume** occurs.
-Review and republish affected plans with the new version, or the explicitly
-rolled-back version, then reopen the gate and resume only after separate
-production acceptance. If a deploy or readback is ambiguous, independently
-inspect production before any retry; do not assume a failed job rolled back.
-Rollback does not reverse D1 schema/data migrations or prove application
-compatibility: changes to contracts and stored state require separate review.
+Use the following existing guarded stages **only after separate authorization
+for temporary business interruption, production D1 gate changes, both Worker
+releases, Plan re-publication and a new synthetic-file upload**:
+
+1. Independently read Provider + Consumer active Version IDs, exact Consumer
+   `ACTIONS_DEPLOYMENT_ID`, six business admission states, durable Run count,
+   six Cloudflare native nonterminal-status inventories, and original Weixin
+   receipt count. Treat counts and version IDs as **fresh run-time values**, not
+   historical constants. Record which Published Plans actually have grants
+   pinned to the outgoing Provider. Preserve paused test Plans as paused.
+2. Pause **all** Active Workflows through the existing Workflow API; verify
+   no new admissions, no unfinished durable Runs and no nonterminal native
+   instances. This is a real, short business interruption. The maintenance
+   gate deliberately rejects even unrelated Active Workflows.
+3. Reuse the existing **mcp-workers Release Worker** preparation-only path:
+   `worker=workflow-mcp-worker`, `actions_migration_prepare=true`,
+   `actions_old_ingress_quiesced=true`, `deploy_to_production=false`.
+   Despite its first-cutover name, the current
+   `scripts/actions-cutover-prepare.mjs` explicitly verifies the already
+   unified `ACTIONS` Binding and allows a guarded re-freeze of the
+   existing 0018 D1 gate after drain. The release workflow is the only
+   authorized D1 write; do not hand-run the SQL or create another launcher.
+4. Use the **cloudflare-actions Release Unified Cloudflare Actions**
+   `protected-maintenance` job with `maintenance_operation=upgrade`,
+   `maintenance_approved=true`, `maintenance_quiesced=true`,
+   `expected_provider_version` equal to the verified outgoing Version ID,
+   `expected_receipts` equal to the just-read original count, and
+   `deploy_to_production=false`. Leave domain/rollback/first-cutover
+   options disabled. The existing release uses `wrangler deploy --keep-vars`,
+   preserves Secrets, D1 and domain, and independently checks the new Version.
+5. With all Plans **still paused** and the D1 gate frozen, run the ordinary
+   **mcp-workers Release Worker** with `worker=workflow-mcp-worker`,
+   `deploy_to_production=true` and
+   `actions_old_ingress_quiesced=true`. The protected Consumer release
+   stages the *live* Provider Version ID as its sole Service Binding pin,
+   independently verifies binding/version, and its guarded activation step
+   reopens the D1 gate **only while every Plan remains paused and drained**.
+   Do not leave the version mismatch live on an open admission path.
+6. Revalidate/re-Publish **only** the affected unchanged Drafts with new
+   exact Cloudflare grants. Same Draft + new Provider Version makes a new
+   immutable Published Version; GitHub Task/Session Plans also require their
+   existing exact pinned Action grants and heavy-execution approval. Do not
+   rewrite unrelated Plans or historical receipts. Verify all affected grants
+   match the Consumer's new pin **before** resuming any business Workflow.
+7. Resume only the previously Active business Workflows and verify the
+   original active set and current Provider binding. The synthetic Litterbox
+   test Plan remains paused except for its one separately approved file
+   admission. For that admission, use a *new* idempotency key, the explicitly
+   selected non-sensitive TXT and `time=1h`; reconcile the Run/Provider
+   result and immediately re-pause the test Plan. Do not replay failed or
+   unknown uploads. A Provider rejection alone is **not** proof of a
+   successful Litterbox E2E.
+
+If any protected step fails or is indeterminate, halt, inspect actual
+versions/receipts, and retain paused admission. The Provider's exact-version
+`rollback` is a separate authorized maintenance operation, **not** an
+automatic response; old grants cannot be used against a different Provider
+version. Do not thaw or resume merely because a GitHub Job succeeded.
+Historical Run `2f34211c-72f5-4875-a249-207d605befd6` remains failed;
+safe diagnostics added by PR #51 cannot recover its original HTTP status.
