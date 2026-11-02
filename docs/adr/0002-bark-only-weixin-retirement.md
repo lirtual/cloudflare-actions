@@ -129,3 +129,14 @@ A continuation of T3 **source-only** review after the [merged synthetic regressi
 
 **Next evidence boundary (not yet authorized):** any production read of these four JSON columns (even aggregate structural/boolean inspection), content-aware semantic judgment of the 3 ambiguous distinct historical message texts, a controlled copy's contents, or an old deployed binary requires a separately and precisely scoped authorization. Use bounded **field-level, in-executor redaction** with aggregate-only output, an exact population guard, and `rows_written=0` validation for a future approved read; stop on any platform safety denial. Do not retry or reroute the already blocked four-Plan Run-reference aggregation. No direct content/production-read authority or deletion approval is conferred by this ADR.
 
+
+
+### T3 exact-seven current Draft guard — stopped without classification (2026-11-03)
+
+The Owner separately authorized **one** minimum-scope production D1 **read-only** `workflows.draft` structural and risk-pattern classification for the **seven previously believed existing Drafts containing historical Weixin Action identifiers**. The query selected only the `draft` column from nondeleted workflows with a case-insensitive literal `weixin.send_text` or `weixin.notify_download` indicator, and enforced **exactly seven matches in the same SQL query** before returning any Draft to the classifier. A fixed `LIMIT 8` bounded the read.
+
+**Observed result:** the **exact-seven guard was not met**. The query returned **no Draft bodies to the in-executor parser**, so Draft parsing, structure checks and sensitivity classification **did not run**; no raw Draft, message, identifier, URL, key or sensitive value was emitted. D1 reported `rows_written=0`. The actual count was deliberately **not fetched**; the result does not establish whether the previously recorded seven changed, whether some are YAML/legacy spellings, or whether the literal matching rule was too narrow. Do not promote this to a "zero historical Weixin Drafts" finding.
+
+**Fail-closed action:** immediately stopped. No second D1 query, broader search, changed predicate, alternate connector, blocked four-Plan reference lookup, historical message read, Run/Step read, backup read or production mutation. The entire permitted **single-read** scope is consumed.
+
+**T3 disposition:** exact-seven Draft classification **Blocked / no classification performed**. Keep the `workflows.draft` content-sensitivity and historical matching population unresolved, in addition to the existing immutable Plan text, four-Plan Run association, controlled-copy, shared invocation no-replay, old Provider #5/#6 and T7/T8/T9 gates. A future independent authorization would need to specify a separately justified, narrower read procedure and an authoritative population definition. This documentation does not authorize that read or any deletion.
