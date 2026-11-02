@@ -1,23 +1,30 @@
-## Spec #54 T6 · Active source boundary (2026-11-02)
+## Spec #54 · Bark-only production checkpoint (2026-11-02)
 
-The reviewed candidate `cloudflare-actions` now compiles only four Actions:
-Bark, Dub, EnvShare and Litterbox. Old Weixin Handler, QR/Owner HTTP,
-Worker source modules, public owner pages and dedicated publisher paths are
-removed from source. `ACTIONS` remains the sole private Service Binding;
-the Worker default fetch returns 404. All Weixin action IDs, old digests,
-`execute`, `getContract`, `getReceipt`, `getBinding` reject, never
-interpreting an old authorization as a fresh send grant. Existing shared
-non-Weixin contracts are unchanged.
+The current Provider Version `960ade68-149a-469c-a4fe-2c5e678df49c`
+is deployed at 100%; the matching Consumer Version
+`9e1845a0-166a-4576-8168-78a19203aa52` is also deployed at 100%
+and pins it through the single private `ACTIONS` binding. The compiled
+Action catalog is exactly Bark, Dub, EnvShare and Litterbox, with immutable
+contracts. The Provider rejects historical Weixin actions on the current
+RPC and defaults HTTP to 404. T6's freeze, provider upgrade, Consumer re-pin,
+three immutable Bark Plan re-publications and protected gate reopening have
+passed [production readback](https://github.com/lirtual/cloudflare-actions/issues/60#issuecomment-6576366208).
 
-**T6 source acceptance is not physical retirement.** Protected maintenance
-requires fresh Owner production authorization, frozen/drained Consumer,
-exact live Consumer/Provider pin and receipt readback, followed by a separate
-Consumer repin and gate reopening approval. No retained prior Provider
-version has a verified Bark-only full catalog: current rollback is always
-rejected. Keep last safe version; no fallback to Weixin. Previously deployed
-Weixin Secret, old version, Owner domain, D1 records and upstream grant must
-be independently retired under T7/T8 authorization. Prior instructions below
-describe *historical behavior*, not current approved procedures.
+**T7 is not complete:** the inherited Weixin encryption Secret, previous
+Worker Versions and enabled `weixin.lirtual.dpdns.org` custom domain
+are still present. The old QR/Owner `/setup/unbind` was a local-only
+operation and could not revoke Tencent/iLink authorization. Do not treat
+source deletion, local unbind, a changed current Worker Secret or blocked
+GitHub rollback as proof that privileged restoration of an older binary
+cannot send. T7 requires separately approved credential/config operations
+and independent upstream invalidity proof. T3 historical Plan sensitivity
+classification, T8 deletion and T9 irrecoverability remain distinct gates.
+The present protected release workflow accepts only approved upgrade and
+fails closed for rollback; it does **not** implement Secret/domain removal.
+
+**Everything below records earlier Spec #21/#35 history and previous
+operator decisions; historical Action names and procedures are not currently
+runnable or authorized for production.**
 
 # Unified Cloudflare Actions — bounded context (Spec #21)
 
