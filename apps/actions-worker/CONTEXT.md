@@ -27,7 +27,7 @@ through the existing protected release gates, requiring a verified Bark-only
 baseline and fail-closed recovery. Q10=A requires recovery window/copy expiry
 or independent proof before claiming **irreversible** deletion; SQL deletion
 alone is insufficient. See ADR-0002 for the no-replay/unknown-Run invariant.
-**Design closed; no runtime or production state has been changed.**
+**Design closed; T1/T2 Consumer source merged in `mcp-workers` PR #686. No production Provider/Consumer release or retired Weixin execution/data state has been changed under Spec #54.**
 
 **Proven live notification state:** Chrome → Bark signed Session Ready, encrypted notification, phone delivery and clickable temporary link passed on 2026-11-02 (Workflow Run `922b90fd-6953-43f8-b5cf-5380f74afc2c`); `openlist` still references `weixin.send_text` and `download` still references `weixin.notify_download`. The paused Weixin test Workflow also remains and needs retirement. OpenList Bark still needs source-reviewed signed Ready URL handling (the existing Bark handler currently restricts the trusted Session to Chrome). Download Bark still needs the existing single-item signed GitHub Task + physical terminal + remote hash-readback proof: a generic “Step succeeded” notification is not equivalent. Bark's Provider `accepted` is not proof of delivery to the handset.
 

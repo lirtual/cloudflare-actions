@@ -1,6 +1,6 @@
 # ADR-0002: Bark-only notifications and irreversible Weixin retirement
 
-**Status: final agreed design (Grill With Docs rounds 1–3, 2026-11-02); NOT implemented, merged, deployed, or authorized for production/deletion.**
+**Status: final agreed design (Grill With Docs rounds 1–3, 2026-11-02). T1/T2 Consumer source merged in `mcp-workers` PR #686; production deployment, Bark E2E, Weixin retirement and irreversible data deletion remain NOT performed or authorized.**
 
 Owner chose the existing encrypted `bark.send_notification` as the sole notification Action for existing notification-bearing business Workflows. Replace Weixin notifications in `openlist` and `download`; `chrome` already uses Bark. Do not add notifications to `windows`, `ubuntu` or `code-server`, add a fallback channel, a new Worker, or another orchestrator. Preserve the current strict notification failure semantics and at-most-once dispatch: rejection fails the notification Step and parent Run; ambiguous outcomes never trigger an automatic resend.
 
