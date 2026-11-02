@@ -1,16 +1,16 @@
 # Cloudflare Actions
 
-## Spec #54 · Current production checkpoint (2026-11-02)
+## Spec #54 · T7 first-retirement checkpoint (2026-11-02)
 
 **T1/T2/T4/T5/T6 PASS; T3 partial; T7/T8/T9 OPEN.** The currently
 deployed `cloudflare-actions` Provider is the Bark-only Worker Version
 `960ade68-149a-469c-a4fe-2c5e678df49c` (100% traffic). The live
 `workflow-mcp-worker` Consumer is
-`9e1845a0-166a-4576-8168-78a19203aa52` (100%), with exactly one
+`8420fe1e-c67f-4a61-91ef-375b8686b77d` (100%), with exactly one
 `ACTIONS -> cloudflare-actions#ActionsEntrypoint` binding pinned to the
 Provider. Six business Workflows are Active; the D1 Action Gate is `open`,
 and all six native nonterminal instance categories were independently empty
-at the recorded T6 checkpoint. See [T6 verified release evidence](https://github.com/lirtual/cloudflare-actions/issues/60#issuecomment-6576366208).
+at the T7 #1 post-maintenance checkpoint. See [T6 initial release evidence](https://github.com/lirtual/cloudflare-actions/issues/60#issuecomment-6576366208) and [T7 first retirement verification](https://github.com/lirtual/cloudflare-actions/issues/61#issuecomment-6577368084).
 
 The deployed Provider source exposes only `bark.send_notification`,
 `dub.shorten_url`, `envshare.share_text`, and `litterbox.upload_file`.
@@ -21,8 +21,10 @@ click-through and physical Session cleanup. These phone E2Es preceded T6's
 Provider re-pin; do not imply a second post-T6 handset test.
 
 **Do not interpret T6 as T7 physical revocation.** The current Provider
-still has inherited `WEIXIN_ENCRYPTION_KEY` Secret metadata; seven historical
-Provider Versions remain listed, and `weixin.lirtual.dpdns.org` still has
+still has inherited `WEIXIN_ENCRYPTION_KEY` Secret metadata; historical
+Provider Version #1 was permanently removed using the approved protected
+maintenance, while five legacy Versions #2–#6 and safe Version #7 remain.
+Additionally, `weixin.lirtual.dpdns.org` still has
 an enabled Worker custom domain. Source and GitHub rollback guards are not
 proof that an old binary cannot be restored by a privileged Cloudflare user.
 The retired Owner UI's local unbind was not independently proven to revoke
@@ -33,9 +35,11 @@ separately authorized production configuration/credential operations, without
 claiming an independent upstream verification. The existing manual protected
 `release-actions.yml` supports reviewed upgrade and an explicitly approved,
 **one-version-at-a-time** T7 historical Version retirement; unsafe rollback
-remains denied. The new retirement mode is source/CI-only until separately
-approved for production, and does not remove the inherited Secret/domain. Historical 20 Weixin receipts (including 7 unknown) and shared
-immutable Plan/Run data remain untouched. T8 irreversible purge and T9
+remains denied. The protected #1 deletion and full business restoration
+passed; **every further Version retirement requires fresh exact production
+authorization**. This maintenance mode does not remove the inherited Secret
+or Owner domain. All 20 historic Weixin receipts (including 7 unknown)
+and shared immutable Plan/Run data remain untouched. T8 irreversible purge and T9
 recovery-window acceptance are separate gates.
 
 **Historical notes below are dated evidence, not current operational
