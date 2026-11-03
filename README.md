@@ -1,16 +1,21 @@
 # Cloudflare Actions
 
-## Spec #54 · T7 first-retirement checkpoint (2026-11-02)
+## Spec #54 · T7 production checkpoint (2026-11-03)
 
 **T1/T2/T4/T5/T6 PASS; T3 partial; T7/T8/T9 OPEN.** The currently
 deployed `cloudflare-actions` Provider is the Bark-only Worker Version
-`960ade68-149a-469c-a4fe-2c5e678df49c` (100% traffic). The live
-`workflow-mcp-worker` Consumer is
-`8420fe1e-c67f-4a61-91ef-375b8686b77d` (100%), with exactly one
+`960ade68-149a-469c-a4fe-2c5e678df49c` (100% traffic). The Consumer
+was most recently independently verified as
+`988ca3ab-d13b-41e8-8b41-3760d9c7af69` (100%), with exactly one
 `ACTIONS -> cloudflare-actions#ActionsEntrypoint` binding pinned to the
-Provider. Six business Workflows are Active; the D1 Action Gate is `open`,
-and all six native nonterminal instance categories were independently empty
-at the T7 #1 post-maintenance checkpoint. See [T6 initial release evidence](https://github.com/lirtual/cloudflare-actions/issues/60#issuecomment-6576366208) and [T7 first retirement verification](https://github.com/lirtual/cloudflare-actions/issues/61#issuecomment-6577368084).
+Provider. Six business Workflows and the `open` Action Gate were last
+independently confirmed at the T7 full restoration checkpoint; the six
+native nonterminal instance categories were empty at that checkpoint.
+These Workflow/Gate conditions were not rechecked after the domain removal.
+See [latest T7 domain retirement readback](https://github.com/lirtual/cloudflare-actions/issues/61#issuecomment-6595999508),
+[T7 business restoration evidence](https://github.com/lirtual/cloudflare-actions/issues/61#issuecomment-6580948056),
+[T6 initial release evidence](https://github.com/lirtual/cloudflare-actions/issues/60#issuecomment-6576366208),
+and [T7 first retirement verification](https://github.com/lirtual/cloudflare-actions/issues/61#issuecomment-6577368084).
 
 The deployed Provider source exposes only `bark.send_notification`,
 `dub.shorten_url`, `envshare.share_text`, and `litterbox.upload_file`.
@@ -21,11 +26,17 @@ click-through and physical Session cleanup. These phone E2Es preceded T6's
 Provider re-pin; do not imply a second post-T6 handset test.
 
 **Do not interpret T6 as T7 physical revocation.** The current Provider
-still has inherited `WEIXIN_ENCRYPTION_KEY` Secret metadata; historical
-Provider Version #1 was permanently removed using the approved protected
-maintenance, while five legacy Versions #2–#6 and safe Version #7 remain.
-Additionally, `weixin.lirtual.dpdns.org` still has
-an enabled Worker custom domain. Source and GitHub rollback guards are not
+had inherited `WEIXIN_ENCRYPTION_KEY` Secret metadata at the last
+Secret-name inventory; its removal has not been performed. Historical
+Provider Versions #1–#4 were retired via protected maintenance; the last
+version inventory retained unsafe #5/#6 and safe #7. On 2026-11-03,
+`weixin.lirtual.dpdns.org` was independently verified **absent** from the
+exact-hostname Worker Domains list after a single approved detachment request.
+The DELETE response was not accepted as success; the later independent
+readback establishes only the observed absence of the custom domain.
+Provider #7, Consumer and the exact ACTIONS Pin remained unchanged.
+External DNS/certificate propagation and public HTTP behavior were not tested.
+Source and GitHub rollback guards are not
 proof that an old binary cannot be restored by a privileged Cloudflare user.
 The retired Owner UI's local unbind was not independently proven to revoke
 Tencent/iLink upstream authorization; the Owner reports having already
@@ -35,10 +46,13 @@ separately authorized production configuration/credential operations, without
 claiming an independent upstream verification. The existing manual protected
 `release-actions.yml` supports reviewed upgrade and an explicitly approved,
 **one-version-at-a-time** T7 historical Version retirement; unsafe rollback
-remains denied. The protected #1 deletion and full business restoration
-passed; **every further Version retirement requires fresh exact production
-authorization**. This maintenance mode does not remove the inherited Secret
-or Owner domain. All 20 historic Weixin receipts (including 7 unknown)
+remains denied. The protected #1–#4 deletions and business restoration
+have historical evidence; **every further Version retirement requires fresh
+exact production authorization**. Actual #5 retirement dispatch was blocked
+by platform safety checks and must not be retried or bypassed. This
+maintenance mode does not remove the inherited Secret or custom domains;
+the old Owner domain was independently retired as noted above.
+All 20 historic Weixin receipts (including 7 unknown)
 and shared immutable Plan/Run data remain untouched. T8 irreversible purge and T9
 recovery-window acceptance are separate gates.
 

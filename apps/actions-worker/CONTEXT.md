@@ -1,8 +1,8 @@
-## Spec #54 · Bark-only production checkpoint (2026-11-02)
+## Spec #54 · Bark-only production checkpoint (2026-11-03)
 
 The current Provider Version `960ade68-149a-469c-a4fe-2c5e678df49c`
-is deployed at 100%; the matching Consumer Version
-`8420fe1e-c67f-4a61-91ef-375b8686b77d` is also deployed at 100%
+was independently verified deployed at 100%; the Consumer Version
+`988ca3ab-d13b-41e8-8b41-3760d9c7af69` was also verified at 100%
 and pins it through the single private `ACTIONS` binding. The compiled
 Action catalog is exactly Bark, Dub, EnvShare and Litterbox, with immutable
 contracts. The Provider rejects historical Weixin actions on the current
@@ -10,9 +10,15 @@ RPC and defaults HTTP to 404. T6's freeze, provider upgrade, Consumer re-pin,
 three immutable Bark Plan re-publications and protected gate reopening have
 passed [production readback](https://github.com/lirtual/cloudflare-actions/issues/60#issuecomment-6576366208).
 
-**T7 is not complete:** the inherited Weixin encryption Secret, previous
-Worker Versions and enabled `weixin.lirtual.dpdns.org` custom domain
-are still present. The old QR/Owner `/setup/unbind` was a local-only
+**T7 is not complete:** the inherited Weixin encryption Secret was present
+in the last Secret-name inventory, and historical Provider Versions #5/#6
+were present in the last version inventory. The former
+`weixin.lirtual.dpdns.org` custom domain was independently verified absent
+on 2026-11-03, with the current Provider and Consumer Pin unchanged. The
+previous single DELETE response was unconfirmed, but the subsequent
+[read-only exact-hostname status check](https://github.com/lirtual/cloudflare-actions/issues/61#issuecomment-6595999508)
+confirmed resource absence; DNS/certificate propagation was not separately
+tested. The old QR/Owner `/setup/unbind` was a local-only
 operation and was not an independent Tencent/iLink revocation proof. The
 Owner confirms WeChat-side unbinding is already complete and asks that it
 remain outside further work. Do not equate that statement with a tested
@@ -35,8 +41,9 @@ DELETE is issued once, and postflight must establish that the target alone
 vanished while the current safe Provider remains deployed. An ambiguous
 DELETE result is **not** permission to retry. No source merge constitutes
 approval to run the destructive operation. This mode does **not** remove
-the current inherited Secret, custom domain, shared D1 or any receipt, and
-the Owner-reported WeChat-side unbinding is outside further scope. For
+the current inherited Secret, shared D1 or any receipt, and does not manage
+Custom Domains (the old Weixin domain was independently retired).
+The Owner-reported WeChat-side unbinding is outside further scope. For
 full acceptance, each production operation and residual risk requires its
 own explicit approval and separate readback. The exact Version #1
 `f663dc66-33fd-4292-ba95-49ac12e26b36` was deleted once through
