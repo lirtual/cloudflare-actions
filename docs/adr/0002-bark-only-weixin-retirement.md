@@ -268,7 +268,7 @@ Further YAML-capable production classification would first require a genuinely s
 
 ### T3 synthetic reservation attribution identity regression (2026-11-03)
 
-[Existing test-only Draft PR #702 in `mcp-workers`](https://github.com/lirtual/mcp-workers/pull/702)
+[Merged test-only PR #702 in `mcp-workers`](https://github.com/lirtual/mcp-workers/pull/702)
 corrects a subtle test/implementation mismatch: the earlier synthetic
 `weixin-retirement-history.test.ts` selected only two exact Weixin Action
 names in SQL, while the production admission-denial
@@ -288,17 +288,23 @@ This is **test-only** and modifies no production classification or
 storage schema.
 
 **Verification:** Focused test file 15/15 Pass; full Workflow test suite
-515/515 Pass; TypeScript typecheck Pass. Draft PR #702 original head
-`0ee3284867403ef0660fa58527502b22cb0fa666` independently passed
-Application checks, Required checks gate and GitGuardian Security Checks
-([PR CI Run #41590999795](https://github.com/lirtual/mcp-workers/actions/runs/41590999795));
-existing Database integration was skipped. The PR is **Draft/Open, not
-merged**. The augmented test-only head is
-`7068e12580f11d45f4e77ae7dac72346eff51f6d`; focused 15/15, full
-515/515, typecheck and diff check passed locally. The new head's remote
-CI must be verified independently and must not inherit old-head checks.
+515/515 Pass; TypeScript typecheck Pass. Earlier PR #702 candidate
+`0ee3284867403ef0660fa58527502b22cb0fa666` passed CI
+([Run #41590999795](https://github.com/lirtual/mcp-workers/actions/runs/41590999795)).
+The final reviewed test-only head
+`7068e12580f11d45f4e77ae7dac72346eff51f6d` independently passed
+Application checks, Required checks gate and GitGuardian
+([Run #41592051124](https://github.com/lirtual/mcp-workers/actions/runs/41592051124));
+Database integration was skipped by existing CI policy. PR #702 was
+squash-merged to `mcp-workers/main` as
+`1400c712879039e4d738e37b5e1a7e219916d48a`, with independent
+[post-merge main CI Success](https://github.com/lirtual/mcp-workers/actions/runs/41596824017).
+This ADR was delivered in [merged `cloudflare-actions` PR #53](https://github.com/lirtual/cloudflare-actions/pull/53)
+as `491675abb9d9a15702a40cd49603c20d03f2ea37`, with independent
+[post-merge main CI Success](https://github.com/lirtual/cloudflare-actions/actions/runs/41597173046).
+These are **source/CI delivery facts only**, not new production acceptance.
 No Worker runtime, D1, Workflow, source publisher or production
-operation was changed.
+operation was changed by these non-production PRs.
 
 **No evidentiary upgrade:** These fabricated fixtures are not a live
 history inventory, a production Run→Plan→Step ownership proof, or a
