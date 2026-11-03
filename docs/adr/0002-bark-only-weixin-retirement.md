@@ -203,3 +203,22 @@ The Owner explicitly authorized **one** limited production `workflow-mcp-db.work
 - Verification: focused suite **5/5 Pass**; complete Workflow suite **515/515 Pass**; TypeScript `tsc --noEmit` and `git diff --check` Pass. PR checks Application, Required checks gate and GitGuardian all Success (Database integration skipped as in existing CI). This is non-production evidence only. Main push CI [#41554927708](https://github.com/lirtual/mcp-workers/actions/runs/41554927708) for squash merge `49fc61a4f9230e057128256c8be377e1098b82dc` independently completed **Success** (attempt 1).
 
 **Limits / disposition:** This test-only helper deliberately reuses the existing `isRetiredWeixinAction` identity predicate and source YAML parsing semantics. It is **not** a deployed parser and cannot, by itself, classify the **22 live indeterminate Drafts** from the previously authorized one-time JSON-only production read (8 currently visible, 14 soft-deleted). Those 22 have not been accessed again or split by JSON/YAML format. The historic 4 positive / 20 structural other / 22 indeterminate aggregate is unchanged. No extra D1/Run/Plan/Step/backup or sensitive-body read, no repeat/alternate route for earlier platform-blocked four-Weixin-only-Plan linkage, and no Worker, Provider #5/#6, Secret, production-config, Workflow, Gate, release or deletion operation. A future parser-capable production inspection would require demonstrated execution-environment capability plus **new explicit authorization**, fail-closed boundaries and aggregate-only returns; T3 #57 stays Open / Partial, T7/T8/T9 unchanged.
+
+
+### T3 controlled execution YAML reuse capability (2026-11-03)
+
+**Scope:** Owner-authorized **non-production execution-environment capability check only**, with **zero Cloudflare API requests and zero D1 reads**. The probe used a hardcoded synthetic YAML sample (not a historical Draft). It returned only the following capability flags:
+
+| Execution-environment check | Observed |
+| --- | --- |
+| Global `YAML` or `jsyaml` parser available | **No** (`undefined`) |
+| CommonJS `require` available | **No** (`undefined`) |
+| `importScripts` available | **No** (`undefined`) |
+| `JSON.parse` safely rejects synthetic YAML | **Yes** |
+| Existing project `yaml` package loaded/reused in this execution environment | **Not verified / unavailable through tested interfaces** |
+
+These results demonstrate that the current Cloudflare command execution interface **has no confirmed direct mechanism** to reuse the project's installed `yaml@2.8.2` parser. They do **not** prove that every conceivable module-loading/bundling mechanism is impossible. Neither a runtime import, external dependency fetch, alternate tool route nor a bespoke parser was attempted; none is a validated production solution. Non-production [PR #701](https://github.com/lirtual/mcp-workers/pull/701) tests remain valid **only in the Node project test environment**, where the existing YAML dependency is installed.
+
+**Decision:** Fail closed and **do not perform a new production Draft query** under a JSON-only parser, do not reclassify YAML/unknown historical shapes by `JSON.parse` failure, and do not replace the existing parser with ad hoc YAML string matching. Preserve the previous single authorized production result **4 structurally identified retired Weixin / 20 narrow JSON structural nonmatches / 22 indeterminate** (8 visible and 14 soft-deleted unknown); these counts are **unchanged**, and the 22 unknown Drafts were **not read again**.
+
+Further YAML-capable production classification would first require a genuinely supported and prevalidated reuse mechanism with synthetic tests, bounded in-executor source handling and aggregate-only output, **plus separate explicit production authorization**. No new service, database, workflow, Worker release or one-off privileged path is justified merely to close an informational count. This capability check does not resolve the four previously safety-blocked Plan→Run references, semantic sensitivity, backups, old Provider #5/#6 authority or no-replay constraints. T3 #57 stays **Open / Partial**; T7/T8/T9 remain independently blocked and unauthorized.
