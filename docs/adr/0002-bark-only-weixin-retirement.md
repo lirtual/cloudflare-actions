@@ -279,16 +279,25 @@ exact Step and **reuses that existing predicate** rather than maintaining
 a parallel Action-name allowlist. A synthetic mixed-case `WeIxIn_legacy`
 with an unrelated provider correctly matches; an unmatched historical
 Step is explicitly `indeterminate`, not a deletable negative. The Bark
-reservation remains distinct. This is **test-only** and modifies no
-production classification or storage schema.
+reservation remains distinct. Additional synthetic fail-closed cases
+validate that duplicate original Step IDs produce a one-to-many join
+and fail the exact reservation-cardinality guard; a missing Run loses
+a joined row and fails the same guard; and malformed Plan JSON aborts
+classification. None of these cases authorizes historical deletion.
+This is **test-only** and modifies no production classification or
+storage schema.
 
 **Verification:** Focused test file 15/15 Pass; full Workflow test suite
-515/515 Pass; TypeScript typecheck Pass. Draft PR #702 head
+515/515 Pass; TypeScript typecheck Pass. Draft PR #702 original head
 `0ee3284867403ef0660fa58527502b22cb0fa666` independently passed
 Application checks, Required checks gate and GitGuardian Security Checks
 ([PR CI Run #41590999795](https://github.com/lirtual/mcp-workers/actions/runs/41590999795));
 existing Database integration was skipped. The PR is **Draft/Open, not
-merged**. No Worker runtime, D1, Workflow, source publisher or production
+merged**. The augmented test-only head is
+`7068e12580f11d45f4e77ae7dac72346eff51f6d`; focused 15/15, full
+515/515, typecheck and diff check passed locally. The new head's remote
+CI must be verified independently and must not inherit old-head checks.
+No Worker runtime, D1, Workflow, source publisher or production
 operation was changed.
 
 **No evidentiary upgrade:** These fabricated fixtures are not a live
