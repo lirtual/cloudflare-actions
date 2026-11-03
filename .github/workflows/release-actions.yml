@@ -1,176 +1,65 @@
 name: Release Unified Cloudflare Actions
+
 on:
   workflow_dispatch:
     inputs:
       deploy_to_production:
-        description: Explicit first-cutover production authorization only
+        description: 'Compatibility safety gate: must be false for reviewed maintenance'
         type: boolean
         required: true
         default: false
       actions_old_ingress_quiesced:
-        description: Owner independently verified legacy admissions stopped and cannot restart
+        description: 'Compatibility safety gate: must be false for maintenance'
         type: boolean
         required: true
         default: false
       domain_operation:
-        description: 'None, reviewed Owner domain transfer, or frozen-gate rollback'
         type: choice
         required: true
         default: none
-        options:
-          - none
-          - transfer
-          - rollback
-      owner_domain_approved:
-        description: 'Explicit, separate Owner authorization for one production domain change'
-        type: boolean
-        required: true
-        default: false
-      expected_provider_version:
-        description: 'Exact previously reviewed active unified Provider version for domain operation'
-        type: string
-        required: false
-      expected_receipts:
-        description: Exact historical Weixin receipt count for first cutover or reviewed maintenance
-        type: string
-        required: true
+        options: [none]
       maintenance_operation:
-        description: 'No maintenance, reviewed Worker upgrade, or explicit version rollback'
+        description: 'Reviewed upgrade, blocked rollback, or separately authorized T7 version retirement'
         type: choice
         required: true
-        default: none
-        options:
-          - none
-          - upgrade
-          - rollback
+        options: [upgrade, rollback, retire-version]
       maintenance_approved:
-        description: Separate Owner production authorization for one maintenance operation
         type: boolean
         required: true
         default: false
       maintenance_quiesced:
-        description: Owner verified all business Workflows paused, gate frozen and existing Runs drained
         type: boolean
         required: true
         default: false
+      expected_provider_version:
+        description: 'Reviewed currently active Provider Worker Version ID'
+        type: string
+        required: true
+      expected_consumer_version:
+        description: 'Reviewed currently active Consumer Worker Version ID'
+        type: string
+        required: true
+      expected_receipts:
+        description: 'Exact historical Weixin receipt count; read-only'
+        type: string
+        required: true
+      retire_version_approved:
+        description: 'T7: independently approved deletion of exactly one reviewed historical Provider Version'
+        type: boolean
+        required: false
+        default: false
+      retire_version_id:
+        description: 'T7: exact, pre-reviewed legacy Provider Version UUID; no ranges or latest'
+        type: string
+        required: false
+        default: ''
       rollback_target_version:
-        description: Exact reviewed previous Worker version (required only for rollback)
+        description: 'Reserved for future reviewed Bark-only rollback candidate; currently rejected'
         type: string
         required: false
 permissions:
   contents: read
 jobs:
-  release:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == 'lirtual' && inputs.deploy_to_production == true && inputs.actions_old_ingress_quiesced == true && inputs.domain_operation == 'none' && inputs.maintenance_operation == 'none' }}
-    runs-on: ubuntu-latest
-    concurrency:
-      group: cloudflare-actions-production
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Require current main and explicit Owner dispatch
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$GITHUB_SHA" == "$(git rev-parse HEAD)" ]]
-          [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-          run_install: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Verify source, isolation, schemas and workerd without production effects
-        run: pnpm run check
-      - name: Read-only frozen Workflow, drained native instances and unbound original Owner
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          ACTIONS_OLD_INGRESS_QUIESCED: ${{ inputs.actions_old_ingress_quiesced }}
-          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
-        run: node scripts/actions-protected-release.mjs preflight
-      - name: Publish first private Actions Worker without transferring Owner domain
-        id: publish
-        shell: bash
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          BARK_DEVICE_KEY: ${{ vars.BARK_DEVICE_KEY }}
-          BARK_ENCRYPTION_KEY: ${{ secrets.BARK_ENCRYPTION_KEY }}
-        run: |
-          set -euo pipefail
-          umask 077
-          [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
-          secret_file="$RUNNER_TEMP/actions-cutover-secrets.json"
-          log_file="$(mktemp)"
-          chmod 600 "$log_file"
-          trap 'rm -f "$secret_file" "$log_file"' EXIT
-          node scripts/actions-protected-release.mjs secrets "$secret_file"
-          if ! (cd apps/actions-worker && pnpm exec wrangler deploy --secrets-file "$secret_file") >"$log_file" 2>&1; then
-            echo 'Unified Worker deployment did not verify; inspect protected run before any retry' >&2
-            exit 1
-          fi
-          version="$(node scripts/actions-protected-release.mjs version "$log_file")"
-          echo "version_id=$version" >> "$GITHUB_OUTPUT"
-      - name: Independently verify active version, original D1 and required secret names
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          EXPECTED_VERSION_ID: ${{ steps.publish.outputs.version_id }}
-        run: node scripts/actions-release-guard.mjs readback
-
-  owner-domain-handoff:
-    name: Reviewed Owner domain route handoff (no Worker deployment)
-    if: >-
-      ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
-          github.actor == 'lirtual' && inputs.deploy_to_production == false &&
-          inputs.actions_old_ingress_quiesced == true && inputs.owner_domain_approved == true &&
-          (inputs.domain_operation == 'transfer' || inputs.domain_operation == 'rollback') && inputs.maintenance_operation == 'none' }}
-    runs-on: ubuntu-latest
-    concurrency:
-      group: cloudflare-actions-production
-      cancel-in-progress: false
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Require exact current main without credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$GITHUB_ACTOR" == 'lirtual' && "$GITHUB_REF" == 'refs/heads/main' ]]
-          [[ "$GITHUB_SHA" == "$(git rev-parse HEAD)" ]]
-          [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-          run_install: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Check original release and Owner domain handoff contract offline
-        run: node --test scripts/actions-protected-release.test.mjs scripts/actions-owner-domain-handoff.test.mjs
-      - name: Move exact Owner hostname to reviewed Service, then read back
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          ACTIONS_OLD_INGRESS_QUIESCED: ${{ inputs.actions_old_ingress_quiesced }}
-          ACTIONS_OWNER_DOMAIN_APPROVED: ${{ inputs.owner_domain_approved }}
-          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
-          ACTIONS_DOMAIN_OPERATION: ${{ inputs.domain_operation }}
-          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
-        run: node scripts/actions-owner-domain-handoff.mjs
-
   protected-maintenance:
     name: Reviewed existing Worker upgrade or exact-version rollback
     if: >-
@@ -178,7 +67,8 @@ jobs:
           github.actor == 'lirtual' && inputs.deploy_to_production == false &&
           inputs.actions_old_ingress_quiesced == false && inputs.domain_operation == 'none' &&
           inputs.maintenance_approved == true && inputs.maintenance_quiesced == true &&
-          (inputs.maintenance_operation == 'upgrade' || inputs.maintenance_operation == 'rollback') }}
+          (inputs.maintenance_operation == 'upgrade' || inputs.maintenance_operation == 'rollback' ||
+           (inputs.maintenance_operation == 'retire-version' && inputs.retire_version_approved == true)) }}
     runs-on: ubuntu-latest
     concurrency:
       group: cloudflare-actions-production
@@ -209,6 +99,7 @@ jobs:
       - name: Check source, immutable contract and maintenance gate offline
         run: pnpm run check
       - name: Inspect current version, immutable Secrets, private binding and drained frozen Workflow
+        if: ${{ inputs.maintenance_operation != 'retire-version' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -216,10 +107,27 @@ jobs:
           ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
           ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
           ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
           ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
           ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
         run: node scripts/actions-protected-upgrade.mjs preflight
+      - name: T7 verify one reviewed historical Version, frozen gate and no Native runs (no write)
+        if: ${{ inputs.maintenance_operation == 'retire-version' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
+          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
+          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
+          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
+          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
+          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
+          ACTIONS_RETIRE_VERSION_APPROVED: ${{ inputs.retire_version_approved }}
+          ACTIONS_RETIRE_VERSION_ID: ${{ inputs.retire_version_id }}
+        run: node scripts/actions-retire-legacy-version.mjs preflight
       - name: Publish one reviewed maintenance operation without touching Secrets, D1 or Owner route
+        if: ${{ inputs.maintenance_operation != 'retire-version' }}
         id: publish
         shell: bash
         env:
@@ -229,6 +137,7 @@ jobs:
           ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
           ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
           ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
           ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
           ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
         run: |
@@ -244,13 +153,10 @@ jobs:
               echo 'Unified Worker upgrade outcome requires independent readback; never blindly retry' >&2
               exit 1
             fi
-            version="$(node scripts/actions-protected-release.mjs version "$log_file")"
+            version="$(node scripts/actions-release-guard.mjs version "$log_file")"
           elif [[ "$ACTIONS_MAINTENANCE_OPERATION" == 'rollback' ]]; then
-            if ! (cd apps/actions-worker && pnpm exec wrangler rollback "$ACTIONS_ROLLBACK_TARGET_VERSION" --message "Owner-approved Spec 21 rollback") >"$log_file" 2>&1; then
-              echo 'Unified Worker rollback outcome requires independent readback; never blindly retry' >&2
-              exit 1
-            fi
-            version="$ACTIONS_ROLLBACK_TARGET_VERSION"
+            echo 'Rollback blocked: no independently verified Bark-only previous version' >&2
+            exit 1
           else
             echo 'Unsupported production maintenance operation' >&2
             exit 1
@@ -258,6 +164,7 @@ jobs:
           EXPECTED_VERSION_ID="$version" node scripts/actions-protected-upgrade.mjs verify-new
           echo "version_id=$version" >> "$GITHUB_OUTPUT"
       - name: Independently read back version, original D1, Secret names and quiesced Workflow
+        if: ${{ inputs.maintenance_operation != 'retire-version' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -266,8 +173,40 @@ jobs:
           ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
           ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
           ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
           ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
           ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
         run: |
           node scripts/actions-release-guard.mjs readback
           node scripts/actions-protected-upgrade.mjs postflight
+
+      - name: T7 delete only the exact approved historical Worker Version (no retry)
+        if: ${{ inputs.maintenance_operation == 'retire-version' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
+          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
+          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
+          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
+          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
+          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
+          ACTIONS_RETIRE_VERSION_APPROVED: ${{ inputs.retire_version_approved }}
+          ACTIONS_RETIRE_VERSION_ID: ${{ inputs.retire_version_id }}
+        run: node scripts/actions-retire-legacy-version.mjs retire
+      - name: T7 independently verify exactly one old Version absent, all others retained
+        if: ${{ inputs.maintenance_operation == 'retire-version' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
+          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
+          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
+          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
+          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
+          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
+          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
+          ACTIONS_RETIRE_VERSION_APPROVED: ${{ inputs.retire_version_approved }}
+          ACTIONS_RETIRE_VERSION_ID: ${{ inputs.retire_version_id }}
+        run: node scripts/actions-retire-legacy-version.mjs postflight

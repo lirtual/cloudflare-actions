@@ -1,37 +1,70 @@
+## Spec #54 · Bark-only production checkpoint (2026-11-03)
+
+The current Provider Version `960ade68-149a-469c-a4fe-2c5e678df49c`
+was independently verified deployed at 100%; the Consumer Version
+`988ca3ab-d13b-41e8-8b41-3760d9c7af69` was also verified at 100%
+and pins it through the single private `ACTIONS` binding. The compiled
+Action catalog is exactly Bark, Dub, EnvShare and Litterbox, with immutable
+contracts. The Provider rejects historical Weixin actions on the current
+RPC and defaults HTTP to 404. T6's freeze, provider upgrade, Consumer re-pin,
+three immutable Bark Plan re-publications and protected gate reopening have
+passed [production readback](https://github.com/lirtual/cloudflare-actions/issues/60#issuecomment-6576366208).
+
+**T7 is not complete:** the inherited Weixin encryption Secret was present
+in the last Secret-name inventory, and historical Provider Versions #5/#6
+were present in the last version inventory. The former
+`weixin.lirtual.dpdns.org` custom domain was independently verified absent
+on 2026-11-03, with the current Provider and Consumer Pin unchanged. The
+previous single DELETE response was unconfirmed, but the subsequent
+[read-only exact-hostname status check](https://github.com/lirtual/cloudflare-actions/issues/61#issuecomment-6595999508)
+confirmed resource absence; DNS/certificate propagation was not separately
+tested. The old QR/Owner `/setup/unbind` was a local-only
+operation and was not an independent Tencent/iLink revocation proof. The
+Owner confirms WeChat-side unbinding is already complete and asks that it
+remain outside further work. Do not equate that statement with a tested
+old-binary send failure. T7 focuses on separately approved project-controlled
+credential/config retirement, old-version and route invalidation. T3 Plan
+classification, T8 deletion and T9 irrecoverability remain separate.
+The protected release workflow accepts reviewed upgrade and per-version
+T7 retirement, rejects rollback, and does **not** implement Secret/domain
+removal.
+
+**T7 protected historical Version retirement (first Version removed):**
+The existing manual `release-actions.yml` supports a separately approved
+`retire-version` mode, deleting **exactly one** allowlisted legacy Provider
+Version after checking a frozen gate, zero Active Workflows/unsettled Runs,
+six empty native states, precise current Consumer/Provider pin and the
+unchanged Weixin receipt count. The beta Worker Versions API is used through
+the **same protected GitHub Actions publisher**, not an alternate deployment
+channel. A preflight file freezes the reviewed Version ID inventory; the
+DELETE is issued once, and postflight must establish that the target alone
+vanished while the current safe Provider remains deployed. An ambiguous
+DELETE result is **not** permission to retry. No source merge constitutes
+approval to run the destructive operation. This mode does **not** remove
+the current inherited Secret, shared D1 or any receipt, and does not manage
+Custom Domains (the old Weixin domain was independently retired).
+The Owner-reported WeChat-side unbinding is outside further scope. For
+full acceptance, each production operation and residual risk requires its
+own explicit approval and separate readback. The exact Version #1
+`f663dc66-33fd-4292-ba95-49ac12e26b36` was deleted once through
+[protected Run #41445701354](https://github.com/lirtual/cloudflare-actions/actions/runs/41445701354), and the existing Consumer release
+[Run #41445936550](https://github.com/lirtual/mcp-workers/actions/runs/41445936550)
+reopened the gate and restored the original six business Workflows. Independent
+readback preserved Version #7, Versions #2–#6, immutable Plans and 20 Weixin
+receipts. See [T7 recorded evidence](https://github.com/lirtual/cloudflare-actions/issues/61#issuecomment-6577368084).
+Remaining production deletions each require new scoped authorization.
+
+**Everything below records earlier Spec #21/#35 history and previous
+operator decisions; historical Action names and procedures are not currently
+runnable or authorized for production.**
+
 # Unified Cloudflare Actions — bounded context (Spec #21)
 
-## 2026-11-02 proposed retirement — Owner round-1 decisions, design only
-
-The Owner confirmed Q1=A / Q2=B / Q3=A in [ADR-0002](../../docs/adr/0002-bark-only-weixin-retirement.md):
-**Bark-only for existing notification-bearing business Workflows** (`openlist`, `download`; `chrome` already migrated); no new notifications for `windows`, `ubuntu`, `code-server`. Retain strict failure and at-most-once semantics, no automatic fallback or retry. The **target end state** removes both `weixin.send_text` and `weixin.notify_download`, all executable Weixin code/bindings/pairing/Owner domain/release paths, and **permanently deletes Weixin-specific historical D1 receipts and audit evidence**, rather than keeping that history indefinitely. This is a *chosen future outcome*, not the current catalog or a production-deletion approval.
-
-Live catalog below is **still authoritative until protected migration and publication**. The older ADR-0001 and Spec #21 instructions to retain Weixin receipts governed the earlier unified-worker cutover and must remain in force during this retirement's unconfirmed stages. Protect immutable Plans, unknown historical Invocations, shared Worker release versions and unrelated Action histories; none may be silently rewritten or re-sent. Do not delete D1 tables, credentials, production Owner domain, Cloudflare resources, or historical Run metadata until the agreed Q8–Q10 data-scope/compatibility requirements are proven and fresh explicit irreversible-operation approval is obtained. Reuse the current Cloudflare Actions Worker, service binding, action gate, guarded CI/release and runtime proof; do not add another Provider or pipeline.
-
-**Round 2 decided:** Q4=A (extend the *existing* reviewed Chrome Bark trust
-and physical-Ready fence with an explicit OpenList Action allowlist);
-Q5=A (require signed, reconciled native Download Task terminal plus verified
-remote SHA-256 readback before Bark, never caller-declared success);
-Q6=A (delete Weixin-exclusive data and controlled copies only, preserve
-unrelated/shared business evidence); Q7=A (Bark E2E before old send
-disablement, then guarded provider retirement and separately authorized
-irreversible data purge). See ADR-0002 and the bounded runbook. Never confuse
-the previously required historical receipt retention with permission to
-re-execute legacy Plan versions. All round-2 rules are **design only**.
-
-**Round 3 final design:** Q8=A keeps immutable mixed-use Plan/Run provenance
-(including inert non-sensitive Weixin Action identifiers and terminal
-`indeterminate` states), while Weixin-exclusive receipts, pairing and audit
-content are purged only at the separately approved deletion stage. Q9=A
-permanently denies any Weixin-capable Provider/Consumer version or rollback
-through the existing protected release gates, requiring a verified Bark-only
-baseline and fail-closed recovery. Q10=A requires recovery window/copy expiry
-or independent proof before claiming **irreversible** deletion; SQL deletion
-alone is insufficient. See ADR-0002 for the no-replay/unknown-Run invariant.
-**Design closed; T1/T2 Consumer source merged in `mcp-workers` PR #686. No production Provider/Consumer release or retired Weixin execution/data state has been changed under Spec #54.**
-
-**Proven live notification state:** Chrome → Bark signed Session Ready, encrypted notification, phone delivery and clickable temporary link passed on 2026-11-02 (Workflow Run `922b90fd-6953-43f8-b5cf-5380f74afc2c`); `openlist` still references `weixin.send_text` and `download` still references `weixin.notify_download`. The paused Weixin test Workflow also remains and needs retirement. OpenList Bark still needs source-reviewed signed Ready URL handling (the existing Bark handler currently restricts the trusted Session to Chrome). Download Bark still needs the existing single-item signed GitHub Task + physical terminal + remote hash-readback proof: a generic “Step succeeded” notification is not equivalent. Bark's Provider `accepted` is not proof of delivery to the handset.
-
-See the retirement design gate at the start of [Spec #21 cutover runbook](../../docs/spec-21-cutover.md). **The rest of this file records existing/historical behavior, not completed retirement.**
+Bark-only/Weixin retirement design, T3 historical classification boundaries,
+and destructive-operation prerequisites are centralized in
+[ADR-0002](../../docs/adr/0002-bark-only-weixin-retirement.md).
+This bounded context's 2026-11-03 production checkpoint above takes
+precedence over historical Spec #21 catalog and runbook notes below.
 
 The `cloudflare-actions` Worker is the single **physical runtime** for the
 static reviewed Action Catalog: `weixin.send_text`, `weixin.notify_download`,

@@ -2,6 +2,48 @@
 
 **Status: final agreed design (Grill With Docs rounds 1–3, 2026-11-02); implementation stages must be assessed separately.** T1/T2 Consumer source was merged in `mcp-workers` PR #686. Per the **last independently recorded T7 production acceptance** ([#61](https://github.com/lirtual/cloudflare-actions/issues/61#issuecomment-6580948056), 2026-11-02), safe Bark-only Provider #7 and its pinned Workflow Consumer were both at 100% traffic, Action Gate was `open`, six original business Workflows were Active and eight unrelated Workflows remained Paused. Legacy Provider Versions #1–#4 were retired; **#5/#6 still exist** and the attempted #5 retirement was blocked, then cancelled. This is an evidence timestamp, **not** a new live production query, not proof of handset E2E or irreversibility. The separately required Bark physical E2E, residual legacy send-authority retirement (T7), target-by-target live purge (T8) and recovery-window expiry (T9) retain their own acceptance gates; **no T8/T9 destructive purge was performed by this documentation update**.
 
+### T3 / T7 status reconciliation — 2026-11-03 (dated evidence only)
+
+T7's old `weixin.lirtual.dpdns.org` Worker Custom Domain is independently
+**absent** from the exact-hostname Cloudflare inventory after one authorized
+detachment request; the request response was not accepted as success, but
+[later read-only evidence](https://github.com/lirtual/cloudflare-actions/issues/61#issuecomment-6595999508)
+confirmed resource absence and unchanged safe Provider #7, sole Consumer
+version and pinned `ACTIONS` binding. No separate DNS/certificate or HTTP
+propagation test was run. Historical Weixin-capable #5/#6 Worker Versions are
+**not retired**: the real protected `retire-version` dispatch was
+platform-blocked, and the inherited `WEIXIN_ENCRYPTION_KEY` Secret is not
+revoked. No T3 classification or T8/T9 purge is authorized by domain removal.
+
+T3's last separately authorized, bounded production Draft structural snapshot
+found **46 physical** Workflow rows (14 visible, 32 soft-deleted):
+**4** definitive retired Weixin Action Drafts (1 visible, 3 soft-deleted),
+**20** narrow JSON structural nonmatches and **22 indeterminate** (8 visible,
+14 soft-deleted). These are *not* present-day exact-seven identities or a
+purge manifest. The existing [synthetic regression in mcp-workers main](https://github.com/lirtual/mcp-workers/blob/main/apps/workflow-mcp-worker/tests/spec54-t3-draft-inventory.test.ts)
+reuses strict YAML parsing in Node, conservatively flags historical nested
+or malformed Draft shapes, and passed its prior full suite; that parser
+capability was **not established** in the Cloudflare execution environment.
+Do not replay the previous one-time Draft read, reclassify the 22 unknowns
+with JSON-only parsing, or infer that the 20 nonmatches are semantically safe.
+
+The other T3 hard gaps remain unchanged: semantic sensitivity of 16 immutable
+Plan texts (including three shape-ambiguous literals), Run links for four
+Weixin-only Plan Versions (previous query security-blocked), possible
+sensitive contents in `runs.inputs`, `runs.result`,
+`run_steps.output` and `workflows.draft`, controlled/manual backups,
+and current dependencies of receipt/reservation readers. The 19
+Weixin-attributed shared invocation reservations remain **conditional
+candidates only**, because deleting them can change cancellation/no-replay
+semantics. Preserve all original immutable Plan/Run/Step state and historic
+unknown/indeterminate outcomes. A concrete Q2=B/Q8=A conflict is neither
+proved nor ruled out; do not invent a user decision or remove immutable
+content without separately authorized evidence. **T3 remains Partial/Open**,
+T7 remains Blocked, and T8/T9 deletion/irreversibility are Not performed.
+
+This section reconciles previously recorded source and redacted
+observations; **no new production data/Secret/backup read or change**.
+
 Owner chose the existing encrypted `bark.send_notification` as the sole notification Action for existing notification-bearing business Workflows. Replace Weixin notifications in `openlist` and `download`; `chrome` already uses Bark. Do not add notifications to `windows`, `ubuntu` or `code-server`, add a fallback channel, a new Worker, or another orchestrator. Preserve the current strict notification failure semantics and at-most-once dispatch: rejection fails the notification Step and parent Run; ambiguous outcomes never trigger an automatic resend.
 
 Unlike ADR-0001's **2026-10-30 cutover-specific** retention decision, the Owner explicitly chose **eventual permanent destruction of Weixin historical D1 receipts and Weixin audit data** as well as removal of both Weixin Action IDs, handlers, pairing/management functionality, obsolete secrets, bindings and publishers. The earlier retention was required to safely *migrate into* the unified Worker; this ADR governs a different, irreversible *retirement out of* Weixin. It does **not** authorize a current write, deletion, credential access, production release, audit modification or Run replay.
