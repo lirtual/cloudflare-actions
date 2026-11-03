@@ -4,7 +4,7 @@ import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {verifyRetirementSelection,verifyTargetMetadata,verifySnapshot,
- REVIEWED_UNSAFE_VERSIONS,retirementStep} from './actions-retire-legacy-version.mjs';
+ REVIEWED_UNSAFE_VERSIONS,retirementStep,verifiedVersionIds} from './actions-retire-legacy-version.mjs';
 
 const safe='960ade68-149a-469c-a4fe-2c5e678df49c';
 const target=REVIEWED_UNSAFE_VERSIONS[0];
@@ -31,8 +31,14 @@ function fixture(opts={}){
   const parsed=new URL(url),path=parsed.pathname,method=init.method||'GET';
   calls.push({path,method});
   if(opts.failDelete&&method==='DELETE')return {ok:false,status:500};
-  if(path.endsWith('/workers/workers/cloudflare-actions/versions')&&method==='GET')
-   return result((opts.deleted?remaining:all).map(id=>({id})));
+  if(path.endsWith('/workers/workers/cloudflare-actions/versions')&&method==='GET'){
+   const rows=(opts.deleted?remaining:all).map(id=>({id}));
+   const info=Object.hasOwn(opts,'listInfo')?opts.listInfo:
+     {page:1,per_page:100,count:rows.length,total_count:rows.length,total_pages:1};
+   return {ok:true,status:200,json:async()=>({
+    success:true,result:rows,...(info===undefined?{}:{result_info:info})
+   })};
+  }
   if(path.endsWith('/workers/workers/cloudflare-actions/versions/'+target)){
    if(method==='DELETE'){
     if(opts.noDelete)return result({});
@@ -77,6 +83,61 @@ test('only one exact old version and independent high-risk approval, never safe 
   {ACTIONS_MAINTENANCE_OPERATION:'upgrade'}
  ])assert.throws(()=>verifyRetirementSelection({...env,...patch}),/blocked/);
  assert.equal(REVIEWED_UNSAFE_VERSIONS.length,6);
+});
+
+test('optional pagination fields must still prove a complete first-page inventory',()=>{
+ const rows=[{id:target},{id:safe}],expected=[target,safe];
+ for(const info of [
+  {page:1,per_page:100,count:2,total_count:2,total_pages:1},
+  {total_count:2},
+  {total_pages:1},
+  {page:1,per_page:2,total_count:2},
+  {count:2,total_pages:1},
+  {per_page:2,total_pages:1}
+ ])assert.deepEqual(verifiedVersionIds({result:rows,result_info:info}),expected);
+ for(const info of [
+  undefined,null,{},[],{page:1},{count:2},{per_page:2},
+  {total_pages:2},{total_count:3},{page:2,total_count:2},
+  {count:1,total_pages:1},{per_page:1,total_count:2},
+  {per_page:101,total_count:2},{per_page:1.5,total_count:2},
+  {total_count:'2'},{total_pages:'1'},{total_pages:1.5},
+  {page:0,total_count:2},{total_count:-1},
+  {total_pages:1,total_count:3}
+ ])assert.throws(()=>verifiedVersionIds({result:rows,result_info:info}),/blocked/);
+});
+
+test('Worker Version IDs must be unique RFC UUIDs and the result bounded at 100',()=>{
+ const info={total_pages:1};
+ const valid=[target,safe];
+ for(const ids of [
+  [target,target],
+  [target,target.toUpperCase()],
+  [target,'not-a-uuid'],
+  [target,'00000000-0000-0000-0000-000000000000'],
+  [target,'960ade68-149a-469c-04fe-2c5e678df49c'],
+  [target,null],
+  Array.from({length:101},()=>safe)
+ ])assert.throws(()=>verifiedVersionIds({
+  result:ids.map(id=>({id})),result_info:info
+ }),/blocked/);
+ assert.deepEqual(verifiedVersionIds({
+  result:valid.map(id=>({id})),result_info:{total_count:2}
+ }),valid);
+});
+
+test('an incomplete inventory stops protected retirement before DELETE',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'actions-t7-pagination-'));
+ try{
+  const e={...env,RUNNER_TEMP:dir};
+  const ok=fixture();
+  assert.equal(await retirementStep('preflight',e,ok.fetcher),'preflight');
+  for(const listInfo of [undefined,{}, {page:2,total_count:7},
+                          {total_count:8,total_pages:1}]){
+   const blocked=fixture({listInfo});
+   await assert.rejects(()=>retirementStep('retire',e,blocked.fetcher),/blocked/);
+   assert.equal(blocked.calls.filter(c=>c.method==='DELETE').length,0);
+  }
+ }finally{rmSync(dir,{recursive:true,force:true});}
 });
 
 test('only reviewed Weixin+D1 historic versions, fail closed on metadata or list drift',()=>{
