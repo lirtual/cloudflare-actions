@@ -264,3 +264,39 @@ These results demonstrate that the current Cloudflare command execution interfac
 **Decision:** Fail closed and **do not perform a new production Draft query** under a JSON-only parser, do not reclassify YAML/unknown historical shapes by `JSON.parse` failure, and do not replace the existing parser with ad hoc YAML string matching. Preserve the previous single authorized production result **4 structurally identified retired Weixin / 20 narrow JSON structural nonmatches / 22 indeterminate** (8 visible and 14 soft-deleted unknown); these counts are **unchanged**, and the 22 unknown Drafts were **not read again**.
 
 Further YAML-capable production classification would first require a genuinely supported and prevalidated reuse mechanism with synthetic tests, bounded in-executor source handling and aggregate-only output, **plus separate explicit production authorization**. No new service, database, workflow, Worker release or one-off privileged path is justified merely to close an informational count. This capability check does not resolve the four previously safety-blocked Plan→Run references, semantic sensitivity, backups, old Provider #5/#6 authority or no-replay constraints. T3 #57 stays **Open / Partial**; T7/T8/T9 remain independently blocked and unauthorized.
+
+
+### T3 synthetic reservation attribution identity regression (2026-11-03)
+
+[Existing test-only Draft PR #702 in `mcp-workers`](https://github.com/lirtual/mcp-workers/pull/702)
+corrects a subtle test/implementation mismatch: the earlier synthetic
+`weixin-retirement-history.test.ts` selected only two exact Weixin Action
+names in SQL, while the production admission-denial
+`isRetiredWeixinAction` predicate also recognizes `weixin.`,
+`weixin_` and `weixin-` historical Action aliases.
+The test now joins reservations to their original Run, immutable Plan and
+exact Step and **reuses that existing predicate** rather than maintaining
+a parallel Action-name allowlist. A synthetic mixed-case `WeIxIn_legacy`
+with an unrelated provider correctly matches; an unmatched historical
+Step is explicitly `indeterminate`, not a deletable negative. The Bark
+reservation remains distinct. This is **test-only** and modifies no
+production classification or storage schema.
+
+**Verification:** Focused test file 15/15 Pass; full Workflow test suite
+515/515 Pass; TypeScript typecheck Pass. Draft PR #702 head
+`0ee3284867403ef0660fa58527502b22cb0fa666` independently passed
+Application checks, Required checks gate and GitGuardian Security Checks
+([PR CI Run #41590999795](https://github.com/lirtual/mcp-workers/actions/runs/41590999795));
+existing Database integration was skipped. The PR is **Draft/Open, not
+merged**. No Worker runtime, D1, Workflow, source publisher or production
+operation was changed.
+
+**No evidentiary upgrade:** These fabricated fixtures are not a live
+history inventory, a production Run→Plan→Step ownership proof, or a
+deletion manifest. The earlier 19 Weixin-attributed reservations and
+4 Weixin-only Plan references retain their historical classification
+limits; the blocked production Run-reference query must not be retried or
+rerouted. The 22 indeterminate Drafts, 16 Plan literal sensitivity,
+shared cancellation/no-replay dependencies, manual backups and old
+Provider #5/#6 authority remain unresolved. Do not delete any
+reservation, history or receipt on the strength of these tests.
