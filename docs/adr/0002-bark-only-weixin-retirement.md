@@ -151,3 +151,21 @@ Original redacted D1 inventory (#57, 2026-11-02): **46 visible Workflows = 6 Act
 **Non-production synthetic evidence:** [mcp-workers test branch / PR](https://github.com/lirtual/mcp-workers/pulls?q=is%3Apr+head%3Atest%2Fspec54-t3-draft-scope-20261103) adds a single test file reproducing different denominators in a synthetic 46→14 dataset; verifies JSON/YAML, aliases, incidental-text false positives and unparseable/nested forms. Test-only implementation, not a new runtime classifier. Local checks must pass before push; CI verdict is determined separately. It is **not** current production classification, not proof of the cause of the guard mismatch and not a purge manifest.
 
 **Unresolved / not authorized:** no additional D1 read, no retry or alternate query for the previously platform-blocked four Weixin-only Plan references; no Draft body, sensitive content, Run/Step result, backup, Provider #5/#6 access or T8/T9 purge. A new aggregate-only production population check, if required, must be separately approved and should not use the old exact-seven assumption. T3 remains Partial / Open.
+
+
+### T3 bounded live Workflow population reconciliation (2026-11-03)
+
+**Explicit one-time production-read authorization:** Read only six `COUNT(*)`/`COALESCE(SUM(CASE ...))` aggregate integers from production `workflow-mcp-db.workflows`, using only `state` and `deleted_at`; do not select `draft` or any other contents/IDs, Plan, Run, Step, credential, body or backup. Single API D1 SELECT was executed between **2026-11-03 00:20:38Z and 00:20:43Z**. In-executor guards verified one D1 statement, exactly one returned row, six named nonnegative safe integers, **`rows_written = 0`**, and both required sum identities. No second query was made.
+
+| Current state / population | Aggregate |
+| --- | ---: |
+| `physical_total` — all physical `workflows` rows | **46** |
+| `visible_total` — `deleted_at IS NULL` | **14** |
+| `soft_deleted_total` — `deleted_at IS NOT NULL` | **32** |
+| `visible_active` — undeleted and `state='active'` | **6** |
+| `visible_paused` — undeleted and `state='paused'` | **8** |
+| `visible_draft` — undeleted and `state='draft'` | **0** |
+
+Validated invariants: `46=14+32` and `14=6+8+0`. This proves **32 physical Workflow rows are currently soft-deleted** and explains the present-day aggregate difference between physical and visible inventories. It does **not** establish the deletion chronology, which original 2026-11-02 records were deleted, or which hidden/visible `draft` *text columns* contain retired Weixin Actions. In particular, **`visible_draft=0` is a Workflow state count, NOT a count of Draft definitions with Weixin Action IDs**: even an Active or Paused Workflow retains a `workflows.draft` definition.
+
+**Limits / outstanding work:** This narrowly authorized count cannot conclude whether any of the earlier seven Weixin-related Draft definitions remain, cannot classify original text sensitivity, and cannot confirm the four previously platform-blocked Plan→Run references, controlled manual backups, immutable Plan literal conflicts, shared invocation no-replay deletion conditions, or retired Provider #5/#6 authority. No Draft/body/identifier/Secret/Plan/Run/Step content was retrieved or returned; no T7/T8/T9, production write, workflow/worker/gate/config change, deployment, deletion or disallowed query/retry. Future production text or even Draft structure inspection requires **new, explicit authorization**; T3 #57 stays **Open / Partial**. Do not reuse the historical exact-seven guard.
