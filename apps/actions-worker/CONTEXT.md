@@ -60,6 +60,12 @@ runnable or authorized for production.**
 
 # Unified Cloudflare Actions — bounded context (Spec #21)
 
+Bark-only/Weixin retirement design, T3 historical classification boundaries,
+and destructive-operation prerequisites are centralized in
+[ADR-0002](../../docs/adr/0002-bark-only-weixin-retirement.md).
+This bounded context's 2026-11-03 production checkpoint above takes
+precedence over historical Spec #21 catalog and runbook notes below.
+
 The `cloudflare-actions` Worker is the single **physical runtime** for the
 static reviewed Action Catalog: `weixin.send_text`, `weixin.notify_download`,
 `bark.send_notification`, `dub.shorten_url`, `envshare.share_text`, and
