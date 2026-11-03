@@ -67,17 +67,36 @@ async function request(e,path,method='GET',fetcher=fetch){
  if(value?.success!==true)fail('Cloudflare version API returned non-success');
  return value;
 }
-async function versions(e,fetcher){
- const result=await request(e,'?per_page=100','GET',fetcher);
- const rows=result?.result;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export function verifiedVersionIds(result){
+ const rows=result?.result,info=result?.result_info;
  if(!Array.isArray(rows)||rows.length>100||
-    result.result_info?.total_pages>1||
-    result.result_info?.total_count>rows.length)
+    !info||typeof info!=='object'||Array.isArray(info))
+   fail('version list completeness cannot be established');
+ // Pagination fields are optional in Cloudflare's OpenAPI. At least one
+ // total marker must prove this one requested page is the entire inventory.
+ for(const [key,min] of [['page',1],['per_page',1],['count',0],
+                         ['total_count',0],['total_pages',1]]){
+   if(info[key]!==undefined&&
+      (!Number.isSafeInteger(info[key])||info[key]<min))
+     fail('invalid version list pagination');
+ }
+ if((info.page!==undefined&&info.page!==1)||
+    (info.per_page!==undefined&&(info.per_page>100||info.per_page<rows.length))||
+    (info.count!==undefined&&info.count!==rows.length)||
+    (info.total_pages!==undefined&&info.total_pages!==1)||
+    (info.total_count!==undefined&&info.total_count!==rows.length)||
+    (info.total_pages!==1&&info.total_count!==rows.length))
    fail('version list incomplete or unexpectedly paginated');
- const ids=rows.map(x=>x.id);
- if(ids.some(x=>typeof x!=='string')||new Set(ids).size!==ids.length)
-   fail('version identity missing or duplicate');
+ const ids=rows.map(x=>x?.id);
+ if(ids.some(id=>typeof id!=='string'||!UUID.test(id))||
+    new Set(ids.map(id=>id.toLowerCase())).size!==ids.length)
+   fail('version identity invalid or duplicate');
  return ids;
+}
+async function versions(e,fetcher){
+ const result=await request(e,'?page=1&per_page=100','GET',fetcher);
+ return verifiedVersionIds(result);
 }
 function snapshotPath(e){
  if(!e.RUNNER_TEMP||!e.RUNNER_TEMP.startsWith('/')||
