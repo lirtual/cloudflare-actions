@@ -32,6 +32,8 @@ function fixture(opts={}){
   calls.push({path,method});
   if(opts.failDelete&&method==='DELETE')return {ok:false,status:500};
   if(path.endsWith('/workers/workers/cloudflare-actions/versions')&&method==='GET'){
+   assert.equal(parsed.searchParams.get('page'),'1');
+   assert.equal(parsed.searchParams.get('per_page'),'100');
    const rows=(opts.deleted?remaining:all).map(id=>({id}));
    const info=Object.hasOwn(opts,'listInfo')?opts.listInfo:
      {page:1,per_page:100,count:rows.length,total_count:rows.length,total_pages:1};
