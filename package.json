@@ -6,6 +6,6 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "check": "node --experimental-strip-types --test scripts/actions-release-guard.test.mjs scripts/actions-protected-upgrade.test.mjs scripts/actions-retire-legacy-version.test.mjs && node scripts/actions-release-guard.mjs source && pnpm --filter bark-provider check && pnpm --filter actions-worker check"
+    "check": "node --experimental-strip-types --test scripts/actions-release-guard.test.mjs scripts/actions-protected-upgrade.test.mjs scripts/actions-retire-legacy-version.test.mjs scripts/actions-retire-weixin-secret.test.mjs && node scripts/actions-release-guard.mjs source && pnpm --filter bark-provider check && pnpm --filter actions-worker check"
   }
 }
