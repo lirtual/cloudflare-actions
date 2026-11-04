@@ -13,7 +13,11 @@ export const REVIEWED_UNSAFE_VERSIONS=Object.freeze([
  '39c5c470-040b-4ae7-b81a-6c47d04f548f', // #5
  '9216ede9-f46a-4f6e-b6d7-733719d71eaf'  // #6
 ]);
-const SAFE_VERSION='960ade68-149a-469c-a4fe-2c5e678df49c'; // #7
+const SAFE_VERSION='960ade68-149a-469c-a4fe-2c5e678df49c'; // #7, immutable legacy Secret binding
+// The final #7 successor is supplied by the approved dispatch, then compared
+// to the LIVE active Provider, Consumer pin and Secret-free version metadata.
+const isFinalLegacySecretVersion=target=>target===SAFE_VERSION;
+const isApprovedTarget=target=>REVIEWED_UNSAFE_VERSIONS.includes(target)||isFinalLegacySecretVersion(target);
 const fail=why=>{throw Error('Legacy Worker Version retirement blocked: '+why);};
 export function verifyRetirementSelection(e){
  if(e.ACTIONS_MAINTENANCE_OPERATION!=='retire-version'||
@@ -23,18 +27,29 @@ export function verifyRetirementSelection(e){
     e.ACTIONS_ROLLBACK_TARGET_VERSION)
    fail('explicit approved retirement and frozen maintenance required');
  const target=e.ACTIONS_RETIRE_VERSION_ID;
- if(!REVIEWED_UNSAFE_VERSIONS.includes(target))
+ if(!isApprovedTarget(target))
    fail('target not in the independently reviewed exact historical allowlist');
- if(e.ACTIONS_EXPECTED_PROVIDER_VERSION!==SAFE_VERSION)
+ if(isFinalLegacySecretVersion(target)){
+   if(!UUID.test(e.ACTIONS_EXPECTED_PROVIDER_VERSION??'')||
+      e.ACTIONS_EXPECTED_PROVIDER_VERSION===SAFE_VERSION||
+      !UUID.test(e.ACTIONS_EXPECTED_CONSUMER_VERSION??''))
+     fail('reviewed Secret-free Provider/Consumer IDs required');
+ }else if(e.ACTIONS_EXPECTED_PROVIDER_VERSION!==SAFE_VERSION)
    fail('safe active Provider version changed; review source again');
  return target;
 }
 export function verifyTargetMetadata(version,target){
- if(version?.id!==target||!REVIEWED_UNSAFE_VERSIONS.includes(target)||
-    !Array.isArray(version.bindings)||
-    !['DB','WEIXIN_ENCRYPTION_KEY'].every(n=>
-      version.bindings.some(x=>x.name===n&&
-        x.type===(n==='DB'?'d1':'secret_text'))))
+ const b=version?.bindings;
+ if(version?.id!==target||!isApprovedTarget(target)||!Array.isArray(b))
+   fail('target version or old Weixin binding proof differs');
+ if(isFinalLegacySecretVersion(target)){
+   // #7 had Bark-only code but retained an immutable Weixin Secret binding.
+   if(!['WEIXIN_ENCRYPTION_KEY','BARK_DEVICE_KEY','BARK_ENCRYPTION_KEY']
+      .every(n=>b.filter(x=>x.name===n&&x.type==='secret_text').length===1)||
+      b.some(x=>x.name==='DB'||x.name==='MCP_ACCESS_TOKEN'||x.type==='service'))
+     fail('final historical Secret-binding metadata differs');
+ }else if(!['DB','WEIXIN_ENCRYPTION_KEY'].every(n=>
+   b.some(x=>x.name===n&&x.type===(n==='DB'?'d1':'secret_text'))))
    fail('target version or old Weixin binding proof differs');
  return true;
 }
@@ -42,8 +57,10 @@ export function verifySnapshot(snapshot,live,target,after=false){
  if(!Array.isArray(snapshot)||!Array.isArray(live)||
     !snapshot.every(v=>typeof v==='string')||
     new Set(snapshot).size!==snapshot.length||
-    !snapshot.includes(target)||!snapshot.includes(SAFE_VERSION)||
-    !REVIEWED_UNSAFE_VERSIONS.includes(target))
+    !snapshot.includes(target)||!isApprovedTarget(target)||
+    (isFinalLegacySecretVersion(target)?
+      (snapshot.length!==2||!UUID.test(snapshot.find(v=>v!==target)??'')):
+      !snapshot.includes(SAFE_VERSION)))
    fail('historical version snapshot invalid');
  const expected=after?snapshot.filter(v=>v!==target):snapshot;
  if(new Set(live).size!==live.length||
@@ -51,6 +68,31 @@ export function verifySnapshot(snapshot,live,target,after=false){
     expected.some(v=>!live.includes(v)))
    fail('Worker version inventory changed unexpectedly');
  return true;
+}
+// The final #7 deletion must not erase the only retained Bark-only Provider.
+async function verifySecretFreeSuccessor(e,target,fetcher){
+ if(!isFinalLegacySecretVersion(target))return;
+ const successor=e.ACTIONS_EXPECTED_PROVIDER_VERSION;
+ const current=(await request(e,'/'+successor,'GET',fetcher))?.result;
+ const b=current?.bindings;
+ if(current?.id!==successor||!Array.isArray(b)||
+    !['BARK_DEVICE_KEY','BARK_ENCRYPTION_KEY'].every(n=>
+       b.filter(x=>x.name===n&&x.type==='secret_text').length===1)||
+    b.some(x=>x.name==='WEIXIN_ENCRYPTION_KEY'||x.name==='DB'||
+      x.name==='MCP_ACCESS_TOKEN'||x.type==='service'))
+   fail('active successor metadata not independently Bark-only');
+ const url='https://api.cloudflare.com/client/v4/accounts/'+
+   e.CLOUDFLARE_ACCOUNT_ID+'/workers/scripts/cloudflare-actions/secrets';
+ const res=await fetcher(url,{method:'GET',redirect:'manual',headers:{
+   Authorization:'Bearer '+e.CLOUDFLARE_API_TOKEN,Accept:'application/json'},
+   signal:AbortSignal.timeout(15000)});
+ if(!res.ok)fail('active Secret inventory unavailable');
+ const data=await res.json(),names=data?.result;
+ if(data?.success!==true||!Array.isArray(names)||
+    names.some(x=>x.name==='WEIXIN_ENCRYPTION_KEY')||
+    ['BARK_DEVICE_KEY','BARK_ENCRYPTION_KEY'].some(n=>
+       names.filter(x=>x.name===n).length!==1))
+   fail('active Secret-free successor credential inventory drift');
 }
 const SNAPSHOT='spec54-t7-provider-version-snapshot.json';
 const urlFor=e=>'https://api.cloudflare.com/client/v4/accounts/'+
@@ -121,8 +163,12 @@ export async function retirementStep(mode,e,fetcher=fetch){
  await readOnlyMaintenancePreflight({
   ...e,ACTIONS_MAINTENANCE_OPERATION:'upgrade'
  },fetcher);
+ await verifySecretFreeSuccessor(e,target,fetcher);
  if(mode==='preflight'){
    const live=await versions(e,fetcher);
+   if(isFinalLegacySecretVersion(target)&&
+      !live.includes(e.ACTIONS_EXPECTED_PROVIDER_VERSION))
+     fail('approved active successor absent from complete inventory');
    verifySnapshot(live,live,target);
    const value=(await request(e,'/'+target,'GET',fetcher))?.result;
    verifyTargetMetadata(value,target);
