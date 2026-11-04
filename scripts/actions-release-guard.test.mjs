@@ -51,3 +51,14 @@ test('Cloudflare Provider audit reads only GET, never secret values',async()=>{
  await assert.rejects(()=>inspectActionsDeployment(env,'44444444-4444-4444-8444-444444444444',fake),/drift/);
  await assert.rejects(()=>inspectActionsDeployment({},version,fake),/blocked/);
 });
+
+test('production release external actions use immutable commit SHAs', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/release-actions.yml', import.meta.url), 'utf8');
+  const references = [...workflow.matchAll(/^\s*(?:-\s*)?uses:\s*([^\s#]+)/gm)]
+    .map(match => match[1])
+    .filter(reference => !reference.startsWith('./'));
+  assert.ok(references.length > 0, 'expected third-party actions in release workflow');
+  for (const reference of references) {
+    assert.match(reference, /^[^@\s]+@[a-f0-9]{40}$/, `unlocked release action: ${reference}`);
+  }
+});
