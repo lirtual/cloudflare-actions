@@ -1,6 +1,32 @@
 # Cloudflare Actions
 
-## Spec #54 · T7 production checkpoint (2026-11-03)
+## Current source and accepted production evidence (2026-11-04)
+
+[Spec #54](https://github.com/lirtual/cloudflare-actions/issues/54) and
+[T7 #61](https://github.com/lirtual/cloudflare-actions/issues/61) are
+closed/completed. The T7 acceptance record identifies Bark-only Provider
+`8fa27993-070f-40db-8332-405aa10b18d4` and Consumer
+`6cd4bb90-5292-48bd-a4c9-16baead72484` at 100%, six business
+Workflows restored, and Gate `open`; these are **issue-recorded**
+production facts, not a new Cloudflare live query. Former Provider
+versions and the inherited Weixin encryption Secret were retired according
+to T7. Historical Weixin D1 records remain preserved: [T8 #62](https://github.com/lirtual/cloudflare-actions/issues/62)
+and [T9 #63](https://github.com/lirtual/cloudflare-actions/issues/63)
+were closed `not_planned`, not reported as destructive purge success.
+
+[Spec #711](https://github.com/lirtual/mcp-workers/issues/711) and
+[ADR-0003](docs/adr/0003-compatible-action-contracts.md) define
+contract-compatible Provider updates without permanently pinning unchanged
+Plans to Worker deployment UUIDs. **Source changes and tests do not deploy
+these behaviors**; initial production cutover and recovery still require
+separate explicit approval. The maintained `release-actions.yml` is a
+single reviewed manual Provider publisher. Historical T7 retirement
+scripts/modes are no longer part of the proposed maintained source;
+historical receipts, runbooks and the earlier ADR remain for audit.
+
+## Historical 2026-11-03 T7 checkpoint (superseded; retained evidence)
+
+
 
 **T1/T2/T4/T5/T6 PASS; T3 partial; T7/T8/T9 OPEN.** The currently
 deployed `cloudflare-actions` Provider is the Bark-only Worker Version
