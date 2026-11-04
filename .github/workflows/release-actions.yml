@@ -19,10 +19,10 @@ on:
         default: none
         options: [none]
       maintenance_operation:
-        description: 'Reviewed upgrade, blocked rollback, or separately authorized T7 version retirement'
+        description: 'Reviewed, frozen/drained Bark-only Provider upgrade (no historical retirement)'
         type: choice
         required: true
-        options: [upgrade, rollback, retire-version, retire-secret]
+        options: [upgrade]
       maintenance_approved:
         type: boolean
         required: true
@@ -39,25 +39,6 @@ on:
         description: 'Reviewed currently active Consumer Worker Version ID'
         type: string
         required: true
-      expected_receipts:
-        description: 'Exact historical Weixin receipt count; read-only'
-        type: string
-        required: true
-      retire_version_approved:
-        description: 'T7: independently approved deletion of exactly one reviewed historical Provider Version'
-        type: boolean
-        required: false
-        default: false
-      retire_version_id:
-        description: 'T7: exact, pre-reviewed legacy Provider Version UUID; no ranges or latest'
-        type: string
-        required: false
-        default: ''
-      retire_secret_approved:
-        description: 'T7: independently approved retirement of only WEIXIN_ENCRYPTION_KEY after all unsafe Versions are gone'
-        type: boolean
-        required: false
-        default: false
       rollback_target_version:
         description: 'Reserved for future reviewed Bark-only rollback candidate; currently rejected'
         type: string
@@ -72,9 +53,7 @@ jobs:
           github.actor == 'lirtual' && inputs.deploy_to_production == false &&
           inputs.actions_old_ingress_quiesced == false && inputs.domain_operation == 'none' &&
           inputs.maintenance_approved == true && inputs.maintenance_quiesced == true &&
-          (inputs.maintenance_operation == 'upgrade' || inputs.maintenance_operation == 'rollback' ||
-           (inputs.maintenance_operation == 'retire-version' && inputs.retire_version_approved == true) ||
-           (inputs.maintenance_operation == 'retire-secret' && inputs.retire_secret_approved == true)) }}
+          inputs.maintenance_operation == 'upgrade' }}
     runs-on: ubuntu-latest
     concurrency:
       group: cloudflare-actions-production
@@ -104,8 +83,8 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Check source, immutable contract and maintenance gate offline
         run: pnpm run check
-      - name: Inspect current version, immutable Secrets, private binding and drained frozen Workflow
-        if: ${{ inputs.maintenance_operation == 'upgrade' || inputs.maintenance_operation == 'rollback' }}
+      - name: Inspect Provider, trusted Consumer binding, and drained frozen Workflow
+        if: ${{ inputs.maintenance_operation == 'upgrade' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -115,25 +94,9 @@ jobs:
           ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
           ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
           ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
-          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
         run: node scripts/actions-protected-upgrade.mjs preflight
-      - name: T7 verify one reviewed historical Version, frozen gate and no Native runs (no write)
-        if: ${{ inputs.maintenance_operation == 'retire-version' }}
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
-          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
-          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
-          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
-          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
-          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
-          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
-          ACTIONS_RETIRE_VERSION_APPROVED: ${{ inputs.retire_version_approved }}
-          ACTIONS_RETIRE_VERSION_ID: ${{ inputs.retire_version_id }}
-        run: node scripts/actions-retire-legacy-version.mjs preflight
       - name: Publish one reviewed maintenance operation without touching Secrets, D1 or Owner route
-        if: ${{ inputs.maintenance_operation == 'upgrade' || inputs.maintenance_operation == 'rollback' }}
+        if: ${{ inputs.maintenance_operation == 'upgrade' }}
         id: publish
         shell: bash
         env:
@@ -145,7 +108,6 @@ jobs:
           ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
           ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
           ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
-          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
         run: |
           set -euo pipefail
           [[ "$GITHUB_SHA" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]]
@@ -154,23 +116,16 @@ jobs:
           log_file="$(mktemp)"
           chmod 600 "$log_file"
           trap 'rm -f "$log_file"' EXIT
-          if [[ "$ACTIONS_MAINTENANCE_OPERATION" == 'upgrade' ]]; then
-            if ! (cd apps/actions-worker && pnpm exec wrangler deploy --keep-vars) >"$log_file" 2>&1; then
-              echo 'Unified Worker upgrade outcome requires independent readback; never blindly retry' >&2
-              exit 1
-            fi
-            version="$(node scripts/actions-release-guard.mjs version "$log_file")"
-          elif [[ "$ACTIONS_MAINTENANCE_OPERATION" == 'rollback' ]]; then
-            echo 'Rollback blocked: no independently verified Bark-only previous version' >&2
-            exit 1
-          else
-            echo 'Unsupported production maintenance operation' >&2
+          [[ "$ACTIONS_MAINTENANCE_OPERATION" == 'upgrade' ]]
+          if ! (cd apps/actions-worker && pnpm exec wrangler deploy --keep-vars) >"$log_file" 2>&1; then
+            echo 'Unified Worker upgrade outcome requires independent readback; never blindly retry' >&2
             exit 1
           fi
+          version="$(node scripts/actions-release-guard.mjs version "$log_file")"
           EXPECTED_VERSION_ID="$version" node scripts/actions-protected-upgrade.mjs verify-new
           echo "version_id=$version" >> "$GITHUB_OUTPUT"
-      - name: Independently read back version, original D1, Secret names and quiesced Workflow
-        if: ${{ inputs.maintenance_operation == 'upgrade' || inputs.maintenance_operation == 'rollback' }}
+      - name: Independently read back new Provider, Bark Secrets, and quiesced Workflow
+        if: ${{ inputs.maintenance_operation == 'upgrade' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -181,122 +136,6 @@ jobs:
           ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
           ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
           ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
-          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
         run: |
           node scripts/actions-release-guard.mjs readback
           node scripts/actions-protected-upgrade.mjs postflight
-
-      - name: T7 delete only the exact approved historical Worker Version (no retry)
-        if: ${{ inputs.maintenance_operation == 'retire-version' }}
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
-          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
-          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
-          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
-          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
-          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
-          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
-          ACTIONS_RETIRE_VERSION_APPROVED: ${{ inputs.retire_version_approved }}
-          ACTIONS_RETIRE_VERSION_ID: ${{ inputs.retire_version_id }}
-        run: node scripts/actions-retire-legacy-version.mjs retire
-      - name: T7 independently verify exactly one old Version absent, all others retained
-        if: ${{ inputs.maintenance_operation == 'retire-version' }}
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
-          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
-          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
-          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
-          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
-          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
-          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
-          ACTIONS_RETIRE_VERSION_APPROVED: ${{ inputs.retire_version_approved }}
-          ACTIONS_RETIRE_VERSION_ID: ${{ inputs.retire_version_id }}
-        run: node scripts/actions-retire-legacy-version.mjs postflight
-
-      # Secret retirement is separate from old-Version retirement: an old
-      # immutable Version keeps its own Secret binding, so first prove #1-#6
-      # absent. Never use 'wrangler secret delete' (immediate deployment).
-      - name: T7 check retired Versions, pinned Consumer and frozen Gate (read-only)
-        if: ${{ inputs.maintenance_operation == 'retire-secret' }}
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
-          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
-          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
-          ACTIONS_SECRET_RETIRE_APPROVED: ${{ inputs.retire_secret_approved }}
-          ACTIONS_RETIRE_VERSION_APPROVED: ${{ inputs.retire_version_approved }}
-          ACTIONS_RETIRE_VERSION_ID: ${{ inputs.retire_version_id }}
-          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
-          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
-          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
-          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
-        run: node scripts/actions-retire-weixin-secret.mjs preflight
-      - name: T7 remove only legacy Secret in a NEW, UNDEPLOYED Version (no retry)
-        if: ${{ inputs.maintenance_operation == 'retire-secret' }}
-        shell: bash
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          set -euo pipefail
-          umask 077
-          log_file="$(mktemp)"
-          trap 'rm -f "$log_file"' EXIT
-          if ! (cd apps/actions-worker && pnpm exec wrangler versions secret delete WEIXIN_ENCRYPTION_KEY --name cloudflare-actions) >"$log_file" 2>&1; then
-            echo 'Secret-version creation may have changed state: inspect, never blindly retry' >&2
-            exit 1
-          fi
-      - name: T7 verify exactly one new Secret-free Version before deployment
-        if: ${{ inputs.maintenance_operation == 'retire-secret' }}
-        id: t7-secret-staged
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
-          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
-          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
-          ACTIONS_SECRET_RETIRE_APPROVED: ${{ inputs.retire_secret_approved }}
-          ACTIONS_RETIRE_VERSION_APPROVED: ${{ inputs.retire_version_approved }}
-          ACTIONS_RETIRE_VERSION_ID: ${{ inputs.retire_version_id }}
-          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
-          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
-          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
-          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
-        run: node scripts/actions-retire-weixin-secret.mjs staged
-      - name: T7 promote verified Secret-free Version using existing protected release
-        if: ${{ inputs.maintenance_operation == 'retire-secret' }}
-        shell: bash
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          NEW_PROVIDER_VERSION: ${{ steps.t7-secret-staged.outputs.new_provider_version }}
-        run: |
-          set -euo pipefail
-          umask 077
-          log_file="$(mktemp)"
-          trap 'rm -f "$log_file"' EXIT
-          if ! (cd apps/actions-worker && pnpm exec wrangler versions deploy "${NEW_PROVIDER_VERSION}@100%" --yes) >"$log_file" 2>&1; then
-            echo 'Secret-free Version promotion outcome unknown: inspect, never blindly retry' >&2
-            exit 1
-          fi
-      - name: T7 verify active Secret-free Version; keep Consumer frozen pending repin
-        if: ${{ inputs.maintenance_operation == 'retire-secret' }}
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
-          ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
-          ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
-          ACTIONS_SECRET_RETIRE_APPROVED: ${{ inputs.retire_secret_approved }}
-          ACTIONS_RETIRE_VERSION_APPROVED: ${{ inputs.retire_version_approved }}
-          ACTIONS_RETIRE_VERSION_ID: ${{ inputs.retire_version_id }}
-          ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
-          ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
-          ACTIONS_EXPECTED_RECEIPTS: ${{ inputs.expected_receipts }}
-          ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
-        run: node scripts/actions-retire-weixin-secret.mjs postflight

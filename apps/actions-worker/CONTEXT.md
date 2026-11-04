@@ -1,3 +1,16 @@
+## Current decision (2026-11-04, Spec #711)
+
+[T7 #61](https://github.com/lirtual/cloudflare-actions/issues/61) is
+completed per its final acceptance record; legacy Weixin versions and
+project-controlled Secret authority were retired. T8/T9 historical D1
+deletion was deliberately `not_planned`. Existing Cloudflare Action
+catalog, private Service Binding, Bark-only owner destination and D1
+anti-replay protections remain authoritative. New contract-compatible
+dispatch removes the stale Consumer deployment-UUID gate while keeping
+the **actual** Provider version in each D1 invocation and Provider
+`getContract`/`execute` identity matching. It is not deployed by a
+source merge; the following dated T7 notes remain historical evidence.
+
 ## Spec #54 · Bark-only production checkpoint (2026-11-03)
 
 The current Provider Version `960ade68-149a-469c-a4fe-2c5e678df49c`
