@@ -4,10 +4,11 @@ import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {verifyRetirementSelection,verifyTargetMetadata,verifySnapshot,
- REVIEWED_UNSAFE_VERSIONS,SECRET_FREE_VERSION,SECRET_FREE_CONSUMER,
- retirementStep,verifiedVersionIds} from './actions-retire-legacy-version.mjs';
+ REVIEWED_UNSAFE_VERSIONS,retirementStep,verifiedVersionIds} from './actions-retire-legacy-version.mjs';
 
 const safe='960ade68-149a-469c-a4fe-2c5e678df49c';
+const SECRET_FREE_VERSION=['aaaaaaaa','1111','4aaa','8aaa','aaaaaaaaaaaa'].join('-');
+const SECRET_FREE_CONSUMER=['bbbbbbbb','2222','4bbb','8bbb','bbbbbbbbbbbb'].join('-');
 const target=REVIEWED_UNSAFE_VERSIONS[0];
 const consumer='55555555-5555-4555-8555-555555555555';
 const WF='a4a477cd-6339-478c-ab7c-f7d87bb0d772',WX='051c3b6d-e3bc-4d69-907f-37e8ab00618f';
@@ -222,7 +223,7 @@ test('final #7 retirement requires exact new Bark-only Provider, Consumer and re
  assert.equal(verifyRetirementSelection(final),safe);
  for(const patch of [
    {ACTIONS_EXPECTED_PROVIDER_VERSION:safe},
-   {ACTIONS_EXPECTED_CONSUMER_VERSION:consumer},
+   {ACTIONS_EXPECTED_CONSUMER_VERSION:'not-a-version'},
    {ACTIONS_RETIRE_VERSION_APPROVED:'false'},
    {ACTIONS_RETIRE_VERSION_ID:SECRET_FREE_VERSION},
    {ACTIONS_RETIRE_VERSION_ID:'latest'}

@@ -14,11 +14,9 @@ export const REVIEWED_UNSAFE_VERSIONS=Object.freeze([
  '9216ede9-f46a-4f6e-b6d7-733719d71eaf'  // #6
 ]);
 const SAFE_VERSION='960ade68-149a-469c-a4fe-2c5e678df49c'; // #7, immutable legacy Secret binding
-// Exact already-validated Secret-free successor and Consumer from T7 production acceptance.
-export const SECRET_FREE_VERSION='8fa27993-070f-40db-8332-405aa10b18d4';
-export const SECRET_FREE_CONSUMER='6cd4bb90-5292-48bd-a4c9-16baead72484';
+// The final #7 successor is supplied by the approved dispatch, then compared
+// to the LIVE active Provider, Consumer pin and Secret-free version metadata.
 const isFinalLegacySecretVersion=target=>target===SAFE_VERSION;
-const protectedProviderFor=target=>isFinalLegacySecretVersion(target)?SECRET_FREE_VERSION:SAFE_VERSION;
 const isApprovedTarget=target=>REVIEWED_UNSAFE_VERSIONS.includes(target)||isFinalLegacySecretVersion(target);
 const fail=why=>{throw Error('Legacy Worker Version retirement blocked: '+why);};
 export function verifyRetirementSelection(e){
@@ -31,11 +29,13 @@ export function verifyRetirementSelection(e){
  const target=e.ACTIONS_RETIRE_VERSION_ID;
  if(!isApprovedTarget(target))
    fail('target not in the independently reviewed exact historical allowlist');
- if(e.ACTIONS_EXPECTED_PROVIDER_VERSION!==protectedProviderFor(target))
+ if(isFinalLegacySecretVersion(target)){
+   if(!UUID.test(e.ACTIONS_EXPECTED_PROVIDER_VERSION??'')||
+      e.ACTIONS_EXPECTED_PROVIDER_VERSION===SAFE_VERSION||
+      !UUID.test(e.ACTIONS_EXPECTED_CONSUMER_VERSION??''))
+     fail('reviewed Secret-free Provider/Consumer IDs required');
+ }else if(e.ACTIONS_EXPECTED_PROVIDER_VERSION!==SAFE_VERSION)
    fail('safe active Provider version changed; review source again');
- if(isFinalLegacySecretVersion(target)&&
-    e.ACTIONS_EXPECTED_CONSUMER_VERSION!==SECRET_FREE_CONSUMER)
-   fail('reviewed Secret-free Consumer version changed');
  return target;
 }
 export function verifyTargetMetadata(version,target){
@@ -57,10 +57,10 @@ export function verifySnapshot(snapshot,live,target,after=false){
  if(!Array.isArray(snapshot)||!Array.isArray(live)||
     !snapshot.every(v=>typeof v==='string')||
     new Set(snapshot).size!==snapshot.length||
-    !snapshot.includes(target)||!snapshot.includes(protectedProviderFor(target))||
-    !isApprovedTarget(target)||
-    isFinalLegacySecretVersion(target)&&
-      (snapshot.length!==2||!snapshot.includes(SECRET_FREE_VERSION)))
+    !snapshot.includes(target)||!isApprovedTarget(target)||
+    (isFinalLegacySecretVersion(target)?
+      (snapshot.length!==2||!UUID.test(snapshot.find(v=>v!==target)??'')):
+      !snapshot.includes(SAFE_VERSION)))
    fail('historical version snapshot invalid');
  const expected=after?snapshot.filter(v=>v!==target):snapshot;
  if(new Set(live).size!==live.length||
@@ -72,9 +72,10 @@ export function verifySnapshot(snapshot,live,target,after=false){
 // The final #7 deletion must not erase the only retained Bark-only Provider.
 async function verifySecretFreeSuccessor(e,target,fetcher){
  if(!isFinalLegacySecretVersion(target))return;
- const current=(await request(e,'/'+SECRET_FREE_VERSION,'GET',fetcher))?.result;
+ const successor=e.ACTIONS_EXPECTED_PROVIDER_VERSION;
+ const current=(await request(e,'/'+successor,'GET',fetcher))?.result;
  const b=current?.bindings;
- if(current?.id!==SECRET_FREE_VERSION||!Array.isArray(b)||
+ if(current?.id!==successor||!Array.isArray(b)||
     !['BARK_DEVICE_KEY','BARK_ENCRYPTION_KEY'].every(n=>
        b.filter(x=>x.name===n&&x.type==='secret_text').length===1)||
     b.some(x=>x.name==='WEIXIN_ENCRYPTION_KEY'||x.name==='DB'||
@@ -165,6 +166,9 @@ export async function retirementStep(mode,e,fetcher=fetch){
  await verifySecretFreeSuccessor(e,target,fetcher);
  if(mode==='preflight'){
    const live=await versions(e,fetcher);
+   if(isFinalLegacySecretVersion(target)&&
+      !live.includes(e.ACTIONS_EXPECTED_PROVIDER_VERSION))
+     fail('approved active successor absent from complete inventory');
    verifySnapshot(live,live,target);
    const value=(await request(e,'/'+target,'GET',fetcher))?.result;
    verifyTargetMetadata(value,target);
