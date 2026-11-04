@@ -24,6 +24,41 @@ single reviewed manual Provider publisher. Historical T7 retirement
 scripts/modes are no longer part of the proposed maintained source;
 historical receipts, runbooks and the earlier ADR remain for audit.
 
+## Spec #711 protected release/recovery paths (source only)
+
+The same **manual** `.github/workflows/release-actions.yml` remains the only
+Provider publisher. This source has not been deployed or production-rollback-tested.
+All modes require a separately approved operation, exact current Provider and
+Consumer UUIDs, the trusted `ACTIONS` Service Binding, and a reviewed Bark-only
+source/contract. The Consumer must first be released without the old
+`ACTIONS_DEPLOYMENT_ID` binding; an old exact-pin Consumer is never treated
+as compatible merely because its schema matches.
+
+- `upgrade`: first/behavior-incompatible transition. Keep all business
+  Workflows paused, D1 Gate frozen, unsettled Runs and native instances drained.
+  Read back the prior Bark-only version before deployment and ensure it remains
+  retained afterward; reopen the Gate and resume Workflows only through the
+  existing independently authorized procedure.
+- `compatible-upgrade`: only after the **existing contract and effective
+  behavior** (destinations, credentials, side effects, output/error semantics,
+  permissions and data policy) have been independently reviewed and the
+  `compatibility_reviewed` approval is true. The Gate remains open and
+  Workflows are not paused. Cloudflare version changes can still cause an
+  uncertain in-flight call: the existing D1 one-shot reservation must prevent
+  replay, and any Unknown outcome is not auto-retried.
+- `rollback`: frozen/drained recovery only; the exact Owner-reviewed target
+  must be the immediately preceding 100%-deployed version, still retained and
+  carrying only the reviewed Bark-only binding types. The original Consumer,
+  Published Plans, Run/Invocation evidence and D1 state are never rewritten.
+  The protected publisher selects exactly that existing version at 100%, then
+  reads back the result. No arbitrary historical Weixin/version rollback.
+
+Cloudflare retains only **one** Provider Version at the 2026-11-04 preflight;
+there is no usable prior target **until an authorized upgrade creates one**.
+Source checks alone do not prove later retention or physical rollback safety.
+Unknown deployment outcomes require independent readback, not blind retries;
+no production action is authorized by these docs or Spec #711.
+
 ## Historical 2026-11-03 T7 checkpoint (superseded; retained evidence)
 
 

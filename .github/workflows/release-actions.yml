@@ -19,15 +19,21 @@ on:
         default: none
         options: [none]
       maintenance_operation:
-        description: 'Reviewed, frozen/drained Bark-only Provider upgrade (no historical retirement)'
+        description: 'Reviewed Bark-only Provider upgrade, compatible update, or exact rollback'
         type: choice
         required: true
-        options: [upgrade]
+        options: [upgrade, compatible-upgrade, rollback]
       maintenance_approved:
         type: boolean
         required: true
         default: false
       maintenance_quiesced:
+        description: 'Required true for frozen upgrade/rollback; false for reviewed compatible update'
+        type: boolean
+        required: true
+        default: false
+      compatibility_reviewed:
+        description: 'Explicit contract AND side-effect behavior compatibility review (not schema-only)'
         type: boolean
         required: true
         default: false
@@ -40,20 +46,22 @@ on:
         type: string
         required: true
       rollback_target_version:
-        description: 'Reserved for future reviewed Bark-only rollback candidate; currently rejected'
+        description: 'Rollback only: exact reviewed immediately previous retained Bark-only Version UUID'
         type: string
         required: false
 permissions:
   contents: read
 jobs:
   protected-maintenance:
-    name: Reviewed existing Worker upgrade or exact-version rollback
+    name: Owner-approved Bark-only Provider release/recovery
     if: >-
       ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
           github.actor == 'lirtual' && inputs.deploy_to_production == false &&
           inputs.actions_old_ingress_quiesced == false && inputs.domain_operation == 'none' &&
-          inputs.maintenance_approved == true && inputs.maintenance_quiesced == true &&
-          inputs.maintenance_operation == 'upgrade' }}
+          inputs.maintenance_approved == true &&
+          ((inputs.maintenance_operation == 'compatible-upgrade' && inputs.compatibility_reviewed == true && inputs.maintenance_quiesced == false) ||
+           (inputs.maintenance_operation == 'upgrade' && inputs.compatibility_reviewed == false && inputs.maintenance_quiesced == true) ||
+           (inputs.maintenance_operation == 'rollback' && inputs.compatibility_reviewed == false && inputs.maintenance_quiesced == true)) }}
     runs-on: ubuntu-latest
     concurrency:
       group: cloudflare-actions-production
@@ -83,20 +91,19 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Check source, immutable contract and maintenance gate offline
         run: pnpm run check
-      - name: Inspect Provider, trusted Consumer binding, and drained frozen Workflow
-        if: ${{ inputs.maintenance_operation == 'upgrade' }}
+      - name: Verify exact Provider and Consumer, Bark-only recovery, and selected Gate safety
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
           ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
           ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
+          ACTIONS_COMPATIBILITY_REVIEWED: ${{ inputs.compatibility_reviewed }}
           ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
           ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
           ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
         run: node scripts/actions-protected-upgrade.mjs preflight
       - name: Publish one reviewed maintenance operation without touching Secrets, D1 or Owner route
-        if: ${{ inputs.maintenance_operation == 'upgrade' }}
         id: publish
         shell: bash
         env:
@@ -105,6 +112,7 @@ jobs:
           ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
           ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
           ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
+          ACTIONS_COMPATIBILITY_REVIEWED: ${{ inputs.compatibility_reviewed }}
           ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
           ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
           ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
@@ -116,16 +124,22 @@ jobs:
           log_file="$(mktemp)"
           chmod 600 "$log_file"
           trap 'rm -f "$log_file"' EXIT
-          [[ "$ACTIONS_MAINTENANCE_OPERATION" == 'upgrade' ]]
-          if ! (cd apps/actions-worker && pnpm exec wrangler deploy --keep-vars) >"$log_file" 2>&1; then
-            echo 'Unified Worker upgrade outcome requires independent readback; never blindly retry' >&2
-            exit 1
+          if [[ "$ACTIONS_MAINTENANCE_OPERATION" == 'rollback' ]]; then
+            version="$ACTIONS_ROLLBACK_TARGET_VERSION"
+            if ! (cd apps/actions-worker && pnpm exec wrangler versions deploy "${version}@100%" --yes) >"$log_file" 2>&1; then
+              echo 'Exact-version rollback outcome unknown; independently read back, never retry blindly' >&2
+              exit 1
+            fi
+          else
+            if ! (cd apps/actions-worker && pnpm exec wrangler deploy --keep-vars) >"$log_file" 2>&1; then
+              echo 'Provider upgrade outcome unknown; independently read back, never retry blindly' >&2
+              exit 1
+            fi
+            version="$(node scripts/actions-release-guard.mjs version "$log_file")"
           fi
-          version="$(node scripts/actions-release-guard.mjs version "$log_file")"
           EXPECTED_VERSION_ID="$version" node scripts/actions-protected-upgrade.mjs verify-new
           echo "version_id=$version" >> "$GITHUB_OUTPUT"
-      - name: Independently read back new Provider, Bark Secrets, and quiesced Workflow
-        if: ${{ inputs.maintenance_operation == 'upgrade' }}
+      - name: Independently verify exact live Provider, Consumer, Bark bindings and Gate
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -133,6 +147,7 @@ jobs:
           ACTIONS_MAINTENANCE_OPERATION: ${{ inputs.maintenance_operation }}
           ACTIONS_MAINTENANCE_APPROVED: ${{ inputs.maintenance_approved }}
           ACTIONS_MAINTENANCE_QUIESCED: ${{ inputs.maintenance_quiesced }}
+          ACTIONS_COMPATIBILITY_REVIEWED: ${{ inputs.compatibility_reviewed }}
           ACTIONS_EXPECTED_PROVIDER_VERSION: ${{ inputs.expected_provider_version }}
           ACTIONS_EXPECTED_CONSUMER_VERSION: ${{ inputs.expected_consumer_version }}
           ACTIONS_ROLLBACK_TARGET_VERSION: ${{ inputs.rollback_target_version }}
