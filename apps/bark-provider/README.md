@@ -1,15 +1,25 @@
-# Bark Action Provider (Spec #16)
+# Bark notification source module (Spec #16)
 
-Independent, private Cloudflare WorkerEntrypoint. The only production target is the
-Owner's configured Bark device, using POST `https://api.day.app/push`. There is no public
-send route, MCP endpoint, webhook, database, queue, scheduler, or message-history table.
+**Current topology:** Bark (`provider: bark`, Action ID `bark.send_notification`)
+runs in the unified `cloudflare-actions` Worker via
+`apps/actions-worker/src/dispatch.ts`. This directory preserves the original
+standalone Bark Provider implementation and its static contract as a source
+module; it is **not** a separately deployed production Worker. The `bark-provider`
+GitHub Environment and this directory's Wrangler configuration are historical,
+not targets of the maintained publisher. The notification is sent only to the
+Owner's configured Bark device using POST `https://api.day.app/push`, with no
+public send route, MCP endpoint, webhook, database, queue, scheduler or
+message-history table.
 
 ## Contract
 
-- Private RPC: `getContract()` → actual Cloudflare Worker Version ID and reviewed
-  contract digest. `sendNotification(input)` → `accepted | rejected | unknown`.
-- Caller is the reviewed `workflow-mcp-worker` Service Binding; Workflow performs
-  explicit approval and durable one-shot D1 reservation before calling the RPC.
+- Unified `ACTIONS` RPC: `getContract('bark.send_notification')` returns the
+  active Worker Version ID and reviewed contract digest; the approved
+  `execute('bark.send_notification', invocation)` dispatches one notification,
+  returning `accepted | rejected | unknown`.
+- Caller is the reviewed `workflow-mcp-worker` through its single `ACTIONS`
+  Service Binding; Workflow performs explicit approval and durable one-shot D1
+  reservation before the RPC.
 - Encrypted payload: AES-256-GCM, random 12-character ASCII IV (12 UTF-8 bytes),
   combined ciphertext + 16-byte tag in Base64, JSON body fields
   `device_key`, `ciphertext`, `iv`, and optional non-sensitive `id`.
@@ -24,37 +34,31 @@ send route, MCP endpoint, webhook, database, queue, scheduler, or message-histor
   are rejected. `critical`, `call`, and `autoCopy` may affect the iPhone.
   `id` is an APNs notification update identifier, **not HTTP idempotency**.
 
-## Production release and recovery
+## Current production release and recovery
 
-The only normal Bark publication path is **GitHub Actions → Release Bark Provider**
-on current `main` with the explicit dispatch checkbox, using separate GitHub
-Environment `bark-provider`:
+The only maintained Provider publication path is the manual
+[Release Unified Cloudflare Actions](../../.github/workflows/release-actions.yml)
+workflow. Its Worker name is `cloudflare-actions`, and the unified dispatcher
+publishes the Bark Action with `service: cloudflare-actions` and
+`entrypoint: ActionsEntrypoint`. The reviewed consumer uses the existing
+`ACTIONS` Service Binding; the former standalone Bark release workflow was
+removed. The old `bark-provider` Environment remains in GitHub as legacy
+metadata but is not referenced by this publisher. Do not treat a rename of
+that Environment as a production migration or use this directory's legacy
+Wrangler configuration to publish a new Worker.
 
-- **Environment Secrets:** `CLOUDFLARE_API_TOKEN`, `BARK_DEVICE_KEY`,
-  `BARK_ENCRYPTION_KEY`.
-- **Environment Variable:** `CLOUDFLARE_ACCOUNT_ID`.
-- Grant this deployment token the minimum Cloudflare permission for this Worker.
-  Keep it separate from the Weixin Worker credentials.
-- Release checks source isolation, tests and exact active deployment+secrets;
-  temporary injection data is private and discarded. No test message is sent.
-  If a secret step fails, do **not** retry blindly: inspect the active version
-  before remediation.
-- Next release `workflow-mcp-worker` through its **existing** approved manual
-  GitHub Actions release. That release checks the Bark active Version ID and
-  pins it to `BARK_ACTION_DEPLOYMENT_ID` while preserving Weixin's own pin.
-  Workflow release credentials must have **read-only visibility of Bark**
-  in addition to their existing Worker release rights.
-- Never auto-follow latest, run a historical uncertain send again, or
-  automatically roll back to an unreviewed/secret-incompatible Worker version.
-  Rollback is a separate explicitly reviewed manual operation: confirm the
-  proposed version's contract and exact consumer pin first; redeploy only
-  a previously reviewed compatible Version via the existing Cloudflare
-  version mechanism, and verify its active ID again. A source-only revert
-  is not evidence of a safe rollback.
+The current publisher uses the GitHub Actions `vars.CLOUDFLARE_ACCOUNT_ID`
+and `secrets.CLOUDFLARE_API_TOKEN` contexts for its protected release flow and verifies
+the existing Worker bindings `BARK_DEVICE_KEY` and `BARK_ENCRYPTION_KEY`
+without printing their values. Updates, rollback, compatibility review and
+real sending require their own applicable gates and authorization; do not
+replay a notification with an unknown result. See the root
+[README](../../README.md) for the current release and recovery contract.
 
-Key rotation: reset/revoke the Device Key in the Bark iOS app, replace the
-independent GitHub Secret and perform a separate reviewed Bark release.
-Synchronize the AES key to the phone before re-enabling sends.
+Key rotation requires a separately authorized change to the current unified
+Worker's Bark Secrets and a reviewed unified release, not a legacy standalone
+Bark publisher. Reset/revoke the Device Key in the Bark iOS app and synchronize
+the AES key to the phone before re-enabling sends.
 Old-key revocation, notification-update behavior and iPhone decryption
 **must be individually verified**; neither unit tests nor an HTTP 200 suffice.
 

@@ -248,9 +248,21 @@ This replaces the unactivated cross-repository handoff from PR #12.
 No production Worker, D1, Secret, Owner identity or Weixin message is
 modified by the source-only cleanup.
 
-## Bark encrypted notifications
+## Bark encrypted notifications (current)
 
-The private, one-device Bark Action Provider is specified in [apps/bark-provider/README.md](apps/bark-provider/README.md). It has an independent reviewed GitHub Actions manual release and does not change the Weixin Worker.
+Bark is the logical Provider (`provider: bark`) and its Action ID is
+`bark.send_notification`. Both run inside the unified `cloudflare-actions`
+Worker (`apps/actions-worker`), not a separate `bark` or `bark-provider`
+production Worker. The maintained manual publisher is
+[Release Unified Cloudflare Actions](.github/workflows/release-actions.yml).
+
+[apps/bark-provider](apps/bark-provider/README.md) retains the original Bark
+implementation as an imported source module. Its directory/package name,
+standalone Wrangler configuration, and the existing `bark-provider` GitHub
+Environment are legacy identifiers, **not current deployment targets**. Do
+not deploy the old entrypoint or rename the legacy Environment as a substitute
+for a reviewed unified release. The current deployed Action contract uses
+`service: cloudflare-actions` and `entrypoint: ActionsEntrypoint`.
 
 ### Litterbox safe rejection diagnostics
 
