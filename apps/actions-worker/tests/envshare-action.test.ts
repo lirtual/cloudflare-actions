@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ENVSHARE_MANIFEST,shareEnvshare,checkEnvsharePayload} from '../src/envshare.ts';
-import {digest,getContract} from '../../bark-provider/src/notification.ts';
+import {digest,getContract} from '../src/bark.ts';
 const version='33333333-3333-4333-8333-333333333333';
 const env={CF_VERSION_METADATA:{id:version},BARK_DEVICE_KEY:'',BARK_ENCRYPTION_KEY:''};
 const sealed={encrypted:'1'.repeat(16)+'2',iv:'1'.repeat(16),ttl:86400,reads:1};

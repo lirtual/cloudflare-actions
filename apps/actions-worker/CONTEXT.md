@@ -112,7 +112,7 @@ below):** the unified `cloudflare-actions` Provider remains the only
 reviewed physical Action runtime; the Workflow Consumer has one
 `ACTIONS -> cloudflare-actions#ActionsEntrypoint` Service Binding.
 Cloudflare inventory returned **HTTP 404** for both former physical
-`weixin-mcp-worker` and `bark-provider`, so neither can be used as a live
+`weixin-mcp-worker` and the former standalone Bark Worker, so neither can be used as a live
 Owner-domain rollback target. The former GitHub release publishers still
 exist; do not invoke them merely to recreate missing Workers.
 `weixin.lirtual.dpdns.org` remains on the unified Worker.

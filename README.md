@@ -256,13 +256,14 @@ Worker (`apps/actions-worker`), not a separate `bark` or `bark-provider`
 production Worker. The maintained manual publisher is
 [Release Unified Cloudflare Actions](.github/workflows/release-actions.yml).
 
-[apps/bark-provider](apps/bark-provider/README.md) retains the original Bark
-implementation as an imported source module. Its directory/package name,
-standalone Wrangler configuration, and the existing `bark-provider` GitHub
-Environment are legacy identifiers, **not current deployment targets**. Do
-not deploy the old entrypoint or rename the legacy Environment as a substitute
-for a reviewed unified release. The current deployed Action contract uses
-`service: cloudflare-actions` and `entrypoint: ActionsEntrypoint`.
+The Bark implementation and its tests are maintained directly in
+[`apps/actions-worker/src/bark.ts`](apps/actions-worker/src/bark.ts) and
+[`apps/actions-worker/tests/bark.test.ts`](apps/actions-worker/tests/bark.test.ts).
+The former standalone Bark package, Worker entrypoint and release path have
+been removed; there is no separate Bark Worker or compatibility module.
+The GitHub Environment is named `bark`; it is not an authorization to publish
+or rotate production Worker Secrets. The effective contract is
+`service: cloudflare-actions` with `entrypoint: ActionsEntrypoint`.
 
 ### Litterbox safe rejection diagnostics
 

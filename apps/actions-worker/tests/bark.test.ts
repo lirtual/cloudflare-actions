@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {digest,getContract,validateNotification,encryptedRequest,sendNotification} from '../src/notification.ts';
+import {digest,getContract,validateNotification,encryptedRequest,sendNotification} from '../src/bark.ts';
 const env={BARK_DEVICE_KEY:'12345678901234567890',
  BARK_ENCRYPTION_KEY:'12345678901234567890123456789012',
  CF_VERSION_METADATA:{id:'c4fb8b5e-0202-42fd-9df9-ff06e9f7ab6c'}};

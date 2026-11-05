@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DUB_MANIFEST,shortenDub,validateDubInput,validateDubUrl} from '../src/dub.ts';
-import {digest,getContract} from '../../bark-provider/src/notification.ts';
+import {digest,getContract} from '../src/bark.ts';
 const version='33333333-3333-4333-8333-333333333333';
 const env={CF_VERSION_METADATA:{id:version},BARK_DEVICE_KEY:'',BARK_ENCRYPTION_KEY:''};
 const url='https://example.org/path?token=private%20value&x=2';

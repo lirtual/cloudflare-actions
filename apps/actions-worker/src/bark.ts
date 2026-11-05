@@ -1,8 +1,8 @@
 /** Static Bark contract, mirrored exactly by the Workflow's reviewed catalog. */
 export const ACTION_MANIFEST=Object.freeze({
  executor:'cloudflare',provider:'bark',action:'bark.send_notification',version:1,
- source_repository:'lirtual/cloudflare-actions',service:'bark-provider',
- entrypoint:'BarkActionProvider',side_effect:'send_to_configured_owner_only',
+ source_repository:'lirtual/cloudflare-actions',service:'cloudflare-actions',
+ entrypoint:'ActionsEntrypoint',side_effect:'send_to_configured_owner_only',
  input_schema:{type:'object',additionalProperties:false,required:['body'],
   properties:{body:{type:'string'},title:{type:'string'},subtitle:{type:'string'},
   markdown:{type:'string'},group:{type:'string'},level:{type:'string'},sound:{type:'string'},

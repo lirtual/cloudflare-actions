@@ -1,4 +1,4 @@
-import {digest,getContract,type Env} from '../../bark-provider/src/notification.ts';
+import {digest,getContract,type Env} from './bark.ts';
 
 /** One anonymous third-party create; no token or target fetch. */
 export const DUB_MANIFEST=Object.freeze({
