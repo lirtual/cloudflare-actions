@@ -1,4 +1,4 @@
-import {digest,getContract,type Env} from '../../bark-provider/src/notification.ts';
+import {digest,getContract,type Env} from './bark.ts';
 
 // The Worker never receives plaintext or the decryption key. Workflow encrypts
 // before D1 admission and sends only the bounded EnvShare v2 wire payload.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {digest,getContract} from '../../bark-provider/src/notification.ts';
+import {digest,getContract} from '../src/bark.ts';
 import {LITTERBOX_MANIFEST,MAX_FILE_BYTES,FIXED_UPLOAD_URL,checkLitterboxParams,
  checkLitterboxDownloadUrl,uploadLitterbox} from '../src/litterbox.ts';
 

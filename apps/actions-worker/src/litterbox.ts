@@ -1,4 +1,4 @@
-import {digest,getContract,type Env} from '../../bark-provider/src/notification.ts';
+import {digest,getContract,type Env} from './bark.ts';
 
 /** One fixed anonymous multipart POST. Binary bytes never enter a durable Plan. */
 export const LITTERBOX_MANIFEST=Object.freeze({

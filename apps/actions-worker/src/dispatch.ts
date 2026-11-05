@@ -1,6 +1,6 @@
 import {ACTION_MANIFEST as BARK_MANIFEST,getContract as pinnedContract,
- sendNotification,type Invocation} from '../../bark-provider/src/notification.ts';
-import type {Env as BarkEnv} from '../../bark-provider/src/notification.ts';
+ sendNotification,type Invocation} from './bark.ts';
+import type {Env as BarkEnv} from './bark.ts';
 import {DUB_MANIFEST,shortenDub} from './dub.ts';
 import {ENVSHARE_MANIFEST,shareEnvshare} from './envshare.ts';
 import {LITTERBOX_MANIFEST,uploadLitterbox} from './litterbox.ts';
@@ -12,8 +12,7 @@ export const ACTION_CATALOG=Object.freeze({
  'dub.shorten_url':DUB_MANIFEST,
  'envshare.share_text':ENVSHARE_MANIFEST,
  'litterbox.upload_file':LITTERBOX_MANIFEST,
- 'bark.send_notification':Object.freeze({...BARK_MANIFEST,
-   service:'cloudflare-actions',entrypoint:'ActionsEntrypoint'}),
+ 'bark.send_notification':BARK_MANIFEST,
 });
 type ActionId=keyof typeof ACTION_CATALOG;
 function registered(action:string):ActionId{
