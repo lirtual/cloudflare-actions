@@ -4,9 +4,9 @@ import {createActionDispatcher,ACTION_CATALOG} from '../src/dispatch.ts';
 
 const version='11111111-1111-4111-8111-111111111111';
 const actions=()=>createActionDispatcher({CF_VERSION_METADATA:{id:version}} as never);
-const reviewed=['dub.shorten_url','envshare.share_text','litterbox.upload_file','bark.send_notification'];
+const reviewed=['dub.shorten_url','envshare.share_text','litterbox.upload_file','bark.send_notification','diagnostic.ping'];
 
-test('one private Bark-only catalog keeps four exact pinned immutable contracts',async()=>{
+test('one private reviewed catalog keeps five exact pinned immutable contracts',async()=>{
  const dispatcher=actions();
  assert.deepEqual((await dispatcher.listActions()).map(x=>x.action_id),reviewed);
  assert.deepEqual(Object.keys(ACTION_CATALOG),reviewed);
