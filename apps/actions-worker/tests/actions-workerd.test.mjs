@@ -53,7 +53,7 @@ function fixture(caller,{dubRedirectMode='original',dubPublicStats=false}={}){
  return {mf,external:()=>external};
 }
 
-test('one real workerd Service Binding has four pinned Actions and zero Weixin/Owner routes',async()=>{
+test('one real workerd Service Binding has five reviewed Actions and zero Weixin/Owner routes',async()=>{
  const caller=`export default {async fetch(request,env){const q=new URL(request.url).searchParams;
   const action=q.get('action');
   try{
@@ -68,7 +68,7 @@ test('one real workerd Service Binding has four pinned Actions and zero Weixin/O
   const client=await mf.getWorker('caller');
   const get=path=>client.fetch('https://caller.example/'+path);
   const list=(await(await get('?list=1')).json()).map(x=>x.action_id);
-  assert.deepEqual(list,['dub.shorten_url','envshare.share_text','litterbox.upload_file','bark.send_notification']);
+  assert.deepEqual(list,['dub.shorten_url','envshare.share_text','litterbox.upload_file','bark.send_notification','diagnostic.ping']);
   for(const action of list){
    const current=await(await get('?contract=1&action='+action)).json();
    assert.equal(current.deployment_id,version);
@@ -88,6 +88,27 @@ test('one real workerd Service Binding has four pinned Actions and zero Weixin/O
    'https://weixin-owner.example.org/qr','https://weixin-owner.example.org/mcp']){
    assert.equal((await mf.dispatchFetch(uri)).status,404,uri);
   }
+  assert.equal(external(),0);
+ }finally{await mf.dispose();}
+});
+
+test('real workerd private binding executes effect-free generic JSON without egress',async()=>{
+ const caller=`export default {async fetch(_request,env){
+  const action='diagnostic.ping';
+  const contract=await env.ACTIONS.getContract(action);
+  const bytes=new TextEncoder().encode('{}');
+  const hash=await crypto.subtle.digest('SHA-256',bytes);
+  const input_digest=Array.from(new Uint8Array(hash),v=>v.toString(16).padStart(2,'0')).join('');
+  return Response.json(await env.ACTIONS.execute(action,{
+   invocation_id:'${requestId}',deployment_id:contract.deployment_id,
+   contract_digest:contract.contract_digest,input_digest}));
+ }};`;
+ const {mf,external}=fixture(caller);
+ try{
+  const client=await mf.getWorker('caller');
+  const result=await(await client.fetch('https://caller.example/')).json();
+  assert.equal(result.status,'accepted');
+  assert.match(result.input_digest,/^[a-f0-9]{64}$/);
   assert.equal(external(),0);
  }finally{await mf.dispose();}
 });
