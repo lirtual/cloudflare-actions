@@ -28,6 +28,13 @@ function fixture(caller,{dubRedirectMode='original',dubPublicStats=false}={}){
     }
     if(request.url==='https://litterbox.catbox.moe/resources/internals/api.php'){
       assert.equal(request.method,'POST');
+      // Litterbox has rejected quoted multipart boundary parameters on some clients.
+      // Verify the actual Workerd outbound Request, not just a Node.js mock body.
+      assert.match(request.headers.get('content-type')||'',
+        /^multipart\/form-data; boundary=[^";\s]+$/);
+      for(const name of ['if-match','if-none-match','if-modified-since','if-unmodified-since']){
+        assert.equal(request.headers.has(name),false);
+      }
       const form=await request.formData();
       assert.equal(form.get('reqtype'),'fileupload');
       assert.equal(form.get('time'),'24h');
