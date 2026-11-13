@@ -103,7 +103,7 @@ test('rejections emit bounded diagnostic categories without changing the pinned 
   const mismatch=await uploadLitterbox(env,{...input,sha256:'0'.repeat(64)},unreachable as any);
   assert.equal(mismatch.status,'rejected');
   assert.equal(posts,0);
-  for(const status of [400,403,429]){
+  for(const status of [400,403,412,429]){
    const answer=await uploadLitterbox(env,input,async()=>new Response(
     'SECRET RESPONSE BODY MUST NEVER APPEAR IN LOGS',{status}));
    assert.deepEqual(answer,{status:'rejected',input_digest:input.input_digest});
@@ -112,7 +112,7 @@ test('rejections emit bounded diagnostic categories without changing the pinned 
    {label:'litterbox_upload_rejected',details:{category:'invalid_invocation'}},
    {label:'litterbox_upload_rejected',details:{category:'invalid_file',invocation_id:input.invocation_id}},
    {label:'litterbox_upload_rejected',details:{category:'contract_mismatch',invocation_id:input.invocation_id}},
-   ...[400,403,429].map(http_status=>({
+   ...[400,403,412,429].map(http_status=>({
     label:'litterbox_upload_rejected',
     details:{category:'upstream_http_4xx',invocation_id:input.invocation_id,http_status},
    })),
