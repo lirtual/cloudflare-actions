@@ -3,12 +3,16 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 const script=readFileSync(new URL('../.build/actions/index.js',import.meta.url),'utf8');
+// Test the actual deployed compatibility date, not an unrelated Workerd default.
+const wrangler=readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8');
+const compatibilityDate=wrangler.match(/"compatibility_date"\s*:\s*"(\d{4}-\d{2}-\d{2})"/)?.[1];
+assert.ok(compatibilityDate,'Wrangler compatibility_date must be declared');
 const version='33333333-3333-4333-8333-333333333333';
 const requestId='11111111-1111-4111-8111-111111111111';
 function fixture(caller,{dubRedirectMode='original',dubPublicStats=false}={}){
  let external=0,dubTarget='';
  const mf=new Miniflare(convertV4MiniflareOptions({port:0,workers:[
-  {name:'cloudflare-actions',modules:true,script,compatibilityDate:'2026-09-15',
+  {name:'cloudflare-actions',modules:true,script,compatibilityDate,
    bindings:{CF_VERSION_METADATA:{id:version},
     BARK_DEVICE_KEY:'12345678901234567890',
     BARK_ENCRYPTION_KEY:'12345678901234567890123456789012'},
@@ -54,7 +58,7 @@ function fixture(caller,{dubRedirectMode='original',dubPublicStats=false}={}){
     assert.equal(Object.hasOwn(envelope,'body'),false);
     return Response.json({code:200});
    }},
-  {name:'caller',modules:true,compatibilityDate:'2026-09-15',
+  {name:'caller',modules:true,compatibilityDate,
    serviceBindings:{ACTIONS:{name:'cloudflare-actions',entrypoint:'ActionsEntrypoint'}},script:caller},
  ]}));
  return {mf,external:()=>external};
