@@ -18,10 +18,5 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - name: Temporary lockfile generation for test-only runtime upgrade
-        run: |
-          pnpm install --no-frozen-lockfile
-          echo 'SPEC874_LOCKFILE_BEGIN'
-          base64 -w 1024 pnpm-lock.yaml
-          echo 'SPEC874_LOCKFILE_END'
+      - run: pnpm install --frozen-lockfile
       - run: pnpm run check
