@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {verifyMaintenanceSelection,verifyAdmissionState,verifyConsumerBinding,
- verifyNativeEmpty,NATIVE_STATES,verifyBarkOnlyVersion,verifyPriorDeployment,
+ verifyNativeEmpty,NATIVE_STATES,verifyReviewedProviderVersion,verifyPriorDeployment,
  verifyNewVersion,readOnlyMaintenancePreflight} from './actions-protected-upgrade.mjs';
 
 const provider='33333333-3333-4333-8333-333333333333';
@@ -98,13 +98,13 @@ test('compatible path accepts open Gate but frozen operations require full Drain
  }
 });
 
-test('Provider/Consumer trust and Bark-only retained-version constraints',()=>{
+test('Provider/Consumer trust and reviewed retained-version constraints',()=>{
  assert.equal(verifyConsumerBinding({bindings}),true);
  for(const b of [[pin],[service,pin],[service,{...pin,name:'BARK_ACTION_DEPLOYMENT_ID'}],
   [service,{...pin,name:'WEIXIN_ACTION_DEPLOYMENT_ID'}],
   [{...service,entrypoint:'Evil'}],[...bindings,{name:'OTHER',type:'service'}]])
   assert.throws(()=>verifyConsumerBinding({bindings:b}),/blocked/);
- assert.equal(verifyBarkOnlyVersion(version(provider),provider),true);
+ assert.equal(verifyReviewedProviderVersion(version(provider),provider),true);
  const broken=[
   {...version(provider),main_module:'worker.js'},
   {...version(provider),id:target},
@@ -113,7 +113,7 @@ test('Provider/Consumer trust and Bark-only retained-version constraints',()=>{
   {...version(provider),bindings:[...versionBindings,versionBindings[0]]},
   {...version(provider),bindings:[...versionBindings,{name:'MCP_ACCESS_TOKEN',type:'secret_text'}]},
   {...version(provider),bindings:versionBindings.map(x=>x.name==='BARK_DEVICE_KEY'?{...x,type:'plain_text'}:x)}];
- for(const v of broken)assert.throws(()=>verifyBarkOnlyVersion(v,provider),/blocked/);
+ for(const v of broken)assert.throws(()=>verifyReviewedProviderVersion(v,provider),/blocked/);
  assert.equal(verifyPriorDeployment(deployed(provider,target),provider,target),true);
  for(const d of [
   deployed(target,provider),deployed(provider,provider),
@@ -177,4 +177,14 @@ test('protected owner-only main workflow preserves exact versions, one publisher
   'wrangler rollback ','actions-owner-domain-handoff.mjs',
   'actions-protected-release.mjs','wrangler secret put','wrangler d1 execute'])
   assert.ok(!y.includes(banned),banned);
+});
+
+test('retained pre-Email version remains recoverable and new versions require exact native sender',()=>{
+ const email={name:'EMAIL',type:'send_email',allowed_sender_addresses:['actions@notify.lirtual.dpdns.org']};
+ assert.equal(verifyReviewedProviderVersion(version(provider),provider),true);
+ assert.throws(()=>verifyReviewedProviderVersion(version(provider),provider,true),/blocked/);
+ assert.equal(verifyReviewedProviderVersion({...version(provider),bindings:[...versionBindings,email]},provider,true),true);
+ for(const broken of [{...email,allowed_sender_addresses:[]},{...email,allowed_sender_addresses:['other@example.invalid']},{...email,allowed_destination_addresses:['fixture@example.invalid']},{...email,type:'plain_text'}]){
+  assert.throws(()=>verifyReviewedProviderVersion({...version(provider),bindings:[...versionBindings,broken]},provider),/blocked/);
+ }
 });

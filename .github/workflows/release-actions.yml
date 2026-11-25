@@ -19,7 +19,7 @@ on:
         default: none
         options: [none]
       maintenance_operation:
-        description: 'Reviewed Bark-only Provider upgrade, compatible update, or exact rollback'
+        description: 'Reviewed private Provider upgrade, compatible update, or exact rollback'
         type: choice
         required: true
         options: [upgrade, compatible-upgrade, rollback]
@@ -46,14 +46,14 @@ on:
         type: string
         required: true
       rollback_target_version:
-        description: 'Rollback only: exact reviewed immediately previous retained Bark-only Version UUID'
+        description: 'Rollback only: exact reviewed immediately previous retained reviewed private Provider Version UUID'
         type: string
         required: false
 permissions:
   contents: read
 jobs:
   protected-maintenance:
-    name: Owner-approved Bark-only Provider release/recovery
+    name: Owner-approved private Provider release/recovery
     if: >-
       ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
           github.actor == 'lirtual' && inputs.deploy_to_production == false &&
@@ -91,7 +91,7 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Check source, immutable contract and maintenance gate offline
         run: pnpm run check
-      - name: Verify exact Provider and Consumer, Bark-only recovery, and selected Gate safety
+      - name: Verify exact Provider and Consumer, reviewed recovery, and selected Gate safety
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -139,7 +139,7 @@ jobs:
           fi
           EXPECTED_VERSION_ID="$version" node scripts/actions-protected-upgrade.mjs verify-new
           echo "version_id=$version" >> "$GITHUB_OUTPUT"
-      - name: Independently verify exact live Provider, Consumer, Bark bindings and Gate
+      - name: Independently verify exact live Provider, Consumer, Provider bindings and Gate
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

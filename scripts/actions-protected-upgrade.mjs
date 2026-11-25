@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {inspectActionsDeployment,verifyActionsSource} from './actions-release-guard.mjs';
+import {inspectActionsDeployment,verifyActionsSource,verifyEmailBinding} from './actions-release-guard.mjs';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const WF='a4a477cd-6339-478c-ab7c-f7d87bb0d772';
@@ -72,9 +72,9 @@ export function verifyNativeEmpty(s,r){
  return true;
 }
 
-// Only previously deployed, retained Bark-only versions may be rollback
+// Only previously deployed, retained reviewed private Provider versions may be rollback
 // candidates. No arbitrary old Weixin script or binding may be resurrected.
-export function verifyBarkOnlyVersion(v,expected){
+export function verifyReviewedProviderVersion(v,expected,requireEmail=false){
  if(v?.id!==expected||v.main_module!=='index.js'||!Array.isArray(v.bindings))
   fail('rollback version identity or module unavailable');
  const seen=new Set();
@@ -83,11 +83,14 @@ export function verifyBarkOnlyVersion(v,expected){
   seen.add(b.name);
   if(REQUIRED_BINDINGS.has(b.name)){
    if(b.type!==REQUIRED_BINDINGS.get(b.name))fail('Bark secret/metadata binding drift');
+  }else if(b.name==='EMAIL'&&b.type==='send_email'){
+   // Exact sender restriction checked below.
   }else if(!RETAINED_PLAINTEXT.has(b.name)||b.type!=='plain_text')
    fail('unreviewed historical Provider binding');
  }
  if([...REQUIRED_BINDINGS.keys()].some(k=>!seen.has(k)))
-  fail('Bark-only required binding absent');
+  fail('Bark required binding absent');
+ verifyEmailBinding(v.bindings,requireEmail);
  return true;
 }
 
@@ -115,7 +118,8 @@ export async function readOnlyMaintenancePreflight(
  e,fetcher=fetch,liveProvider=e.ACTIONS_EXPECTED_PROVIDER_VERSION,phase='before'){
  const a=verifyMaintenanceSelection(e);
  if(!UUID.test(liveProvider))fail('invalid Provider readback version');
- await inspectActionsDeployment(e,liveProvider,fetcher);
+ const requireEmail=phase==='after'&&a.operation!=='rollback';
+ await inspectActionsDeployment(e,liveProvider,fetcher,requireEmail);
  const root='https://api.cloudflare.com/client/v4/accounts/'+e.CLOUDFLARE_ACCOUNT_ID;
  const headers={Authorization:'Bearer '+e.CLOUDFLARE_API_TOKEN,Accept:'application/json'};
  const read=async(p,sql,raw=false)=>{
@@ -143,16 +147,16 @@ export async function readOnlyMaintenancePreflight(
   }
  }
  const getVersion=id=>read('/workers/workers/cloudflare-actions/versions/'+id);
- verifyBarkOnlyVersion(await getVersion(liveProvider),liveProvider);
+ verifyReviewedProviderVersion(await getVersion(liveProvider),liveProvider,requireEmail);
  if(phase==='before'&&a.operation==='rollback'){
   const deployed=await read('/workers/scripts/cloudflare-actions/deployments?per_page=2');
   verifyPriorDeployment(deployed,a.current,a.target);
-  verifyBarkOnlyVersion(await getVersion(a.target),a.target);
+  verifyReviewedProviderVersion(await getVersion(a.target),a.target);
  }
  if(phase==='after'&&a.operation!=='rollback'){
-  // Ensure the previously serving Bark-only version is still retained
+  // Ensure the previously serving reviewed Provider version is still retained
   // as the exact recovery candidate after source deployment.
-  verifyBarkOnlyVersion(await getVersion(a.current),a.current);
+  verifyReviewedProviderVersion(await getVersion(a.current),a.current);
  }
  return liveProvider;
 }
@@ -178,8 +182,8 @@ if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.u
    }else verifyNewVersion(a.current,version);
    await readOnlyMaintenancePreflight(process.env,fetch,version,'after');
    console.log(a.operation==='compatible-upgrade'
-    ? 'Compatible Bark-only Provider active; Workflow admission remains open'
-    : 'Reviewed Bark-only Provider active; frozen gate requires separately authorized reopen');
+    ? 'Compatible private Provider active; Workflow admission remains open'
+    : 'Reviewed private Provider active; frozen gate requires separately authorized reopen');
   }else fail('unsupported mode');
  })().catch(e=>{console.error(e.message);process.exitCode=1});
 }

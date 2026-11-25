@@ -8,7 +8,7 @@ const deployments={deployments:[{versions:[{version_id:version,percentage:100}]}
 const bindings=[{name:'CF_VERSION_METADATA',type:'version_metadata'},
  ...REQUIRED_KEYS.map(name=>({name,type:'secret_text'}))];
 const secrets=REQUIRED_KEYS.map(name=>({name}));
-test('Bark-only source excludes Weixin Owner configs and future services',()=>{
+test('Private Provider source excludes Weixin Owner configs and future services',()=>{
  assert.equal(verifyActionsSource(cfg),true);
  assert.deepEqual(REQUIRED_KEYS,['BARK_DEVICE_KEY','BARK_ENCRYPTION_KEY']);
  assert.equal(cfg.d1_databases,undefined);
@@ -19,7 +19,9 @@ test('Bark-only source excludes Weixin Owner configs and future services',()=>{
   {vars:{ADMIN_HOST:'weixin.lirtual.dpdns.org'}},
   {routes:[{pattern:'example.net'}]},
   {workers_dev:true},{services:[{binding:'OLD'}]},{preview_urls:true},
-  {secrets:{required:['BARK_DEVICE_KEY']}}]){
+  {secrets:{required:['BARK_DEVICE_KEY']}},{send_email:[]},
+  {send_email:[{name:'EMAIL',allowed_sender_addresses:['other@example.invalid']}]},
+  {send_email:[{...cfg.send_email[0],remote:true}]}]){
   assert.throws(()=>verifyActionsSource({...cfg,...p}),/blocked/);
  }
 });
@@ -61,4 +63,13 @@ test('production release external actions use immutable commit SHAs', () => {
   for (const reference of references) {
     assert.match(reference, /^[^@\s]+@[a-f0-9]{40}$/, `unlocked release action: ${reference}`);
   }
+});
+
+test('new live Provider requires exact Email sender while legacy preflight remains valid',()=>{
+ const email={name:'EMAIL',type:'send_email',allowed_sender_addresses:['actions@notify.lirtual.dpdns.org']};
+ const inspect=b=>verifyActionsPreflight({activeVersions:deployments,settings:{bindings:b},secrets},true);
+ assert.throws(()=>inspect(bindings),/blocked/);
+ assert.equal(inspect([...bindings,email]),version);
+ assert.throws(()=>inspect([...bindings,{...email,allowed_sender_addresses:[]}]),/blocked/);
+ assert.throws(()=>inspect([...bindings,email,{...email,name:'OTHER'}]),/blocked/);
 });
