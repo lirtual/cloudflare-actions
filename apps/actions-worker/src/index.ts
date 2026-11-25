@@ -2,7 +2,7 @@ import {WorkerEntrypoint} from 'cloudflare:workers';
 import {createActionDispatcher,type Env} from './dispatch.ts';
 
 // Owner QR/HTTP endpoints are retired from the single private Actions Worker.
-// Keep the Service Binding entrypoint and its reviewed four-action catalog.
+// Keep the Service Binding entrypoint and its reviewed Action catalog.
 export class ActionsEntrypoint extends WorkerEntrypoint<Env>{
  async listActions(){return createActionDispatcher(this.env).listActions();}
  async getContract(action_id:string,contract_digest?:string){

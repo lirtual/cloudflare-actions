@@ -1,12 +1,12 @@
 import {ACTION_MANIFEST as BARK_MANIFEST,getContract as pinnedContract,
  sendNotification,type Invocation} from './bark.ts';
-import type {Env as BarkEnv} from './bark.ts';
+import {EMAIL_MANIFEST,sendEmail,type EmailEnv} from './email.ts';
 import {DUB_MANIFEST,shortenDub} from './dub.ts';
 import {ENVSHARE_MANIFEST,shareEnvshare} from './envshare.ts';
 import {LITTERBOX_MANIFEST,uploadLitterbox} from './litterbox.ts';
 import {DIAGNOSTIC_MANIFEST,pingDiagnostic} from './diagnostic.ts';
 
-export type Env=BarkEnv;
+export type Env=EmailEnv;
 // Exact, build-time allowlist. Legacy Weixin identities are deliberately
 // absent even when their historical digest or old receipt still exists.
 export const ACTION_CATALOG=Object.freeze({
@@ -15,6 +15,7 @@ export const ACTION_CATALOG=Object.freeze({
  'litterbox.upload_file':LITTERBOX_MANIFEST,
  'bark.send_notification':BARK_MANIFEST,
  'diagnostic.ping':DIAGNOSTIC_MANIFEST,
+ 'email.send':EMAIL_MANIFEST,
 });
 type ActionId=keyof typeof ACTION_CATALOG;
 function registered(action:string):ActionId{
@@ -40,6 +41,7 @@ export function createActionDispatcher(env:Env){
    if(action==='envshare.share_text')return shareEnvshare(env,invocation as Parameters<typeof shareEnvshare>[1]);
    if(action==='litterbox.upload_file')return uploadLitterbox(env,invocation as Parameters<typeof uploadLitterbox>[1]);
    if(action==='diagnostic.ping')return pingDiagnostic(env,invocation);
+   if(action==='email.send')return sendEmail(env,invocation);
    return sendNotification(env,invocation as Invocation,undefined,ACTION_CATALOG[action]);
   },
   async getReceipt(action_id:string,_query:unknown){

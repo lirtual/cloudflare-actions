@@ -9,6 +9,7 @@
     "binding": "CF_VERSION_METADATA"
   },
   "keep_vars": false,
+  "send_email": [{"name":"EMAIL","allowed_sender_addresses":["actions@notify.lirtual.dpdns.org"]}],
   "observability": {
     "enabled": true,
     "logs": {

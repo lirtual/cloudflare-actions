@@ -1,6 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {resolve} from 'node:path';
+import {EMAIL_SENDER} from '../apps/actions-worker/src/email.ts';
 // Historical Weixin secrets can still be physically present until T7.
 export function parsePublishedVersion(log){
  const found=[...String(log).matchAll(/(?:^|\n)(?:Current )?Version ID:\s*([0-9a-f-]{36})/gi)]
@@ -12,6 +13,20 @@ export function parsePublishedVersion(log){
 export const REQUIRED_KEYS=Object.freeze(['BARK_DEVICE_KEY','BARK_ENCRYPTION_KEY']);
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const fail=why=>{throw Error('Actions release blocked: '+why);};
+// A retained version may predate Email. A new source deployment must carry
+// exactly the reviewed native sender restriction, never an extra binding.
+function exactSender(b){
+ return b?.name==='EMAIL'&&Array.isArray(b.allowed_sender_addresses)&&
+  b.allowed_sender_addresses.length===1&&b.allowed_sender_addresses[0]===EMAIL_SENDER&&
+  b.destination_address===undefined&&b.allowed_destination_addresses===undefined;
+}
+export function verifyEmailBinding(bindings,required=false){
+ const email=bindings.filter(b=>b?.name==='EMAIL'||b?.type==='send_email');
+ if(!email.length&&!required)return true;
+ if(email.length!==1||email[0].type!=='send_email'||!exactSender(email[0]))
+  fail('native Email binding or sender restriction mismatch');
+ return true;
+}
 export function verifyActionsSource(c){
  if(c?.name!=='cloudflare-actions'||c.main!=='src/index.ts'||
    c.workers_dev!==false||c.preview_urls!==false||
@@ -20,10 +35,14 @@ export function verifyActionsSource(c){
    c.vars&&Object.keys(c.vars).length||
    JSON.stringify([...(c.secrets?.required??[])].sort())!==
      JSON.stringify([...REQUIRED_KEYS].sort()))
-  fail('Bark-only static source/config not proven');
+  fail('reviewed private Provider source/config not proven');
+ const email=c.send_email;
+ if(!Array.isArray(email)||email.length!==1||!exactSender(email[0])||
+    Object.keys(email[0]).some(k=>!['name','allowed_sender_addresses'].includes(k)))
+  fail('native Email source binding mismatch');
  return true;
 }
-export function verifyActionsPreflight({activeVersions,settings,secrets}){
+export function verifyActionsPreflight({activeVersions,settings,secrets},requireEmail=false){
  const v=activeVersions?.deployments?.[0]?.versions,b=settings?.bindings;
  if(!Array.isArray(v)||v.length!==1||v[0].percentage!==100||
    !UUID.test(v[0].version_id??'')||!Array.isArray(b)||!Array.isArray(secrets))
@@ -34,9 +53,10 @@ export function verifyActionsPreflight({activeVersions,settings,secrets}){
  if(b.filter(x=>x.name==='CF_VERSION_METADATA'&&x.type==='version_metadata').length!==1||
     b.some(x=>x.type==='service'||x.name==='MCP_ACCESS_TOKEN'))
   fail('unexpected binding/identity');
+ verifyEmailBinding(b,requireEmail);
  return v[0].version_id;
 }
-export async function inspectActionsDeployment(env,expected,fetcher=fetch){
+export async function inspectActionsDeployment(env,expected,fetcher=fetch,requireEmail=false){
  if(!/^[a-f0-9]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID??'')||
     !env.CLOUDFLARE_API_TOKEN||!UUID.test(expected??''))
   fail('authenticated exact-version readback required');
@@ -53,7 +73,7 @@ export async function inspectActionsDeployment(env,expected,fetcher=fetch){
  };
  const [activeVersions,settings,secrets]=await Promise.all([
   get('/deployments?per_page=1'),get('/settings'),get('/secrets')]);
- const actual=verifyActionsPreflight({activeVersions,settings,secrets});
+ const actual=verifyActionsPreflight({activeVersions,settings,secrets},requireEmail);
  if(actual.toLowerCase()!==expected.toLowerCase())fail('active version drift');
  return actual;
 }
@@ -68,7 +88,7 @@ if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.u
   }else if(process.argv[2]==='readback')
    console.log('Reviewed Provider '+await inspectActionsDeployment(process.env,process.env.EXPECTED_VERSION_ID));
   else if(!process.argv[2]||process.argv[2]==='source')
-   console.log('Bark-only Provider source reviewed; no production change');
+   console.log('Private Provider source reviewed; no production change');
   else fail('unsupported mode');
  })().catch(e=>{console.error(e.message);process.exitCode=1});
 }

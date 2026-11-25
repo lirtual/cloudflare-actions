@@ -64,7 +64,7 @@ function fixture(caller,{dubRedirectMode='original',dubPublicStats=false}={}){
  return {mf,external:()=>external};
 }
 
-test('one real workerd Service Binding has five reviewed Actions and zero Weixin/Owner routes',async()=>{
+test('one real workerd Service Binding has six reviewed Actions and zero Weixin/Owner routes',async()=>{
  const caller=`export default {async fetch(request,env){const q=new URL(request.url).searchParams;
   const action=q.get('action');
   try{
@@ -79,7 +79,7 @@ test('one real workerd Service Binding has five reviewed Actions and zero Weixin
   const client=await mf.getWorker('caller');
   const get=path=>client.fetch('https://caller.example/'+path);
   const list=(await(await get('?list=1')).json()).map(x=>x.action_id);
-  assert.deepEqual(list,['dub.shorten_url','envshare.share_text','litterbox.upload_file','bark.send_notification','diagnostic.ping']);
+  assert.deepEqual(list,['dub.shorten_url','envshare.share_text','litterbox.upload_file','bark.send_notification','diagnostic.ping','email.send']);
   for(const action of list){
    const current=await(await get('?contract=1&action='+action)).json();
    assert.equal(current.deployment_id,version);
@@ -264,5 +264,30 @@ test('real workerd private RPC transports one bounded Litterbox file to fixed mu
   assert.equal(reply.status,'accepted');
   assert.equal(reply.download_url,'https://litter.catbox.moe/workerd-fixture.txt');
   assert.equal(external(),1);
+ }finally{await mf.dispose();}
+});
+
+test('real private RPC forwards near-limit UTF-8 structured Email to local native binding',async()=>{
+ const email={to:'fixture@example.invalid',subject:'合成日报',text:'中文'.repeat(3000),html:'<p>'+ '报告'.repeat(1050)+'</p>'};
+ const size=Buffer.byteLength(JSON.stringify(email));
+ assert.equal(size,24384);
+ const config=JSON.parse(wrangler);
+ const caller=`export default {async fetch(request,env){
+  const input=await request.json(), contract=await env.ACTIONS.getContract('email.send');
+  const canonical=Object.fromEntries(Object.entries(input).sort(([a],[b])=>a.localeCompare(b,'en')));
+  const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(canonical)));
+  const input_digest=Array.from(new Uint8Array(hash),v=>v.toString(16).padStart(2,'0')).join('');
+  return Response.json(await env.ACTIONS.execute('email.send',{...input,invocation_id:'${requestId}',deployment_id:contract.deployment_id,contract_digest:contract.contract_digest,input_digest}));
+ }}`;
+ const mf=new Miniflare(convertV4MiniflareOptions({port:0,workers:[
+  {name:'cloudflare-actions',modules:true,script,compatibilityDate,
+   email:{send_email:config.send_email},bindings:{CF_VERSION_METADATA:{id:version}}},
+  {name:'caller',modules:true,compatibilityDate,serviceBindings:{ACTIONS:{name:'cloudflare-actions',entrypoint:'ActionsEntrypoint'}},script:caller},
+ ]}));
+ try{
+  const result=await(await(await mf.getWorker('caller')).fetch('https://caller.example/',{method:'POST',body:JSON.stringify(email)})).json();
+  assert.equal(result.status,'accepted');
+  assert.equal(typeof result.message_id,'string');
+  assert.ok(result.message_id.trim());
  }finally{await mf.dispose();}
 });
