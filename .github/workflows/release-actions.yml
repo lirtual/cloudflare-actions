@@ -3,21 +3,6 @@ name: Release Unified Cloudflare Actions
 on:
   workflow_dispatch:
     inputs:
-      deploy_to_production:
-        description: 'Compatibility safety gate: must be false for reviewed maintenance'
-        type: boolean
-        required: true
-        default: false
-      actions_old_ingress_quiesced:
-        description: 'Compatibility safety gate: must be false for maintenance'
-        type: boolean
-        required: true
-        default: false
-      domain_operation:
-        type: choice
-        required: true
-        default: none
-        options: [none]
       maintenance_operation:
         description: 'Reviewed private Provider upgrade, compatible update, or exact rollback'
         type: choice
@@ -56,8 +41,7 @@ jobs:
     name: Owner-approved private Provider release/recovery
     if: >-
       ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
-          github.actor == 'lirtual' && inputs.deploy_to_production == false &&
-          inputs.actions_old_ingress_quiesced == false && inputs.domain_operation == 'none' &&
+          github.actor == 'lirtual' &&
           inputs.maintenance_approved == true &&
           ((inputs.maintenance_operation == 'compatible-upgrade' && inputs.compatibility_reviewed == true && inputs.maintenance_quiesced == false) ||
            (inputs.maintenance_operation == 'upgrade' && inputs.compatibility_reviewed == false && inputs.maintenance_quiesced == true) ||
