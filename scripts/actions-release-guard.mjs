@@ -2,7 +2,6 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {resolve} from 'node:path';
 import {EMAIL_SENDER} from '../apps/actions-worker/src/email.ts';
-// Historical Weixin secrets can still be physically present until T7.
 export function parsePublishedVersion(log){
  const found=[...String(log).matchAll(/(?:^|\n)(?:Current )?Version ID:\s*([0-9a-f-]{36})/gi)]
    .map(m=>m[1]);
