@@ -54,8 +54,8 @@ export function verifyConsumerBinding(x){
     b.filter(v=>v.name==='ACTIONS'&&v.type==='service'&&
       v.service==='cloudflare-actions'&&v.entrypoint==='ActionsEntrypoint').length!==1)
   fail('actual trusted Consumer ACTIONS Service Binding drift');
- // The old Consumer pins deployment UUIDs at runtime. Absence of the old
- // binding is the minimally sufficient first-cutover compatibility witness.
+ // The current Consumer selects the trusted live Provider; legacy static
+ // deployment pins are outside the supported maintenance contract.
  if(b.some(v=>['ACTIONS_DEPLOYMENT_ID','WEIXIN_ACTION_DEPLOYMENT_ID',
    'BARK_ACTION_DEPLOYMENT_ID'].includes(v.name)))
   fail('Consumer compatibility cutover not verified: legacy pin remains');
