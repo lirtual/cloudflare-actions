@@ -188,3 +188,10 @@ test('retained pre-Email version remains recoverable and new versions require ex
   assert.throws(()=>verifyReviewedProviderVersion({...version(provider),bindings:[...versionBindings,broken]},provider),/blocked/);
  }
 });
+
+test('completed first cutover is not part of the ongoing Provider dispatch contract',()=>{
+ const source=readFileSync(new URL('../.github/workflows/release-actions.yml',import.meta.url),'utf8');
+ for(const input of ['deploy_to_production','actions_old_ingress_quiesced','domain_operation']){
+  assert.ok(!source.includes(input),input+' is no longer a selectable maintenance operation');
+ }
+});
